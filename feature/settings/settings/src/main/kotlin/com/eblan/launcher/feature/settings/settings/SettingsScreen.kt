@@ -140,18 +140,16 @@ internal fun SettingsScreen(
 
                 HorizontalDivider(modifier = Modifier.fillMaxWidth())
 
-                if (!packageManager.isDefaultLauncher()) {
-                    SettingsRow(
-                        imageVector = EblanLauncherIcons.Info,
-                        title = "Default Launcher",
-                        subtitle = "Choose Einstein Launcher",
-                        onClick = {
-                            context.startActivity(Intent(ACTION_HOME_SETTINGS))
-                        },
-                    )
+                SettingsRow(
+                    imageVector = EblanLauncherIcons.Info,
+                    title = "Default Launcher",
+                    subtitle = "Choose Einstein Launcher",
+                    onClick = {
+                        context.startActivity(Intent(ACTION_HOME_SETTINGS))
+                    },
+                )
 
-                    HorizontalDivider(modifier = Modifier.fillMaxWidth())
-                }
+                HorizontalDivider(modifier = Modifier.fillMaxWidth())
 
                 SettingsRow(
                     imageVector = EblanLauncherIcons.Settings,
