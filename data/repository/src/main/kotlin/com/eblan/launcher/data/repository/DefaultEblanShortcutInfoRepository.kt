@@ -19,18 +19,23 @@ package com.eblan.launcher.data.repository
 
 import com.eblan.launcher.data.room.dao.EblanShortcutInfoDao
 import com.eblan.launcher.data.room.entity.EblanShortcutInfoEntity
+import com.eblan.launcher.domain.model.DeleteEblanShortcutInfo
 import com.eblan.launcher.domain.model.EblanShortcutInfo
 import com.eblan.launcher.domain.repository.EblanShortcutInfoRepository
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-class DefaultEblanShortcutInfoRepository @Inject constructor(private val eblanShortcutInfoDao: EblanShortcutInfoDao) :
-    EblanShortcutInfoRepository {
+class DefaultEblanShortcutInfoRepository @Inject constructor(private val eblanShortcutInfoDao: EblanShortcutInfoDao) : EblanShortcutInfoRepository {
     override val eblanShortcutInfos =
         eblanShortcutInfoDao.getEblanShortcutInfoEntities().map { entities ->
             entities.map { entity ->
                 entity.asModel()
             }
+        }
+
+    override suspend fun getEblanShortcutInfos(): List<EblanShortcutInfo> = eblanShortcutInfoDao.getEblanShortcutInfoEntityList()
+        .map { eblanShortcutInfoEntity ->
+            eblanShortcutInfoEntity.asModel()
         }
 
     override suspend fun upsertEblanShortcutInfos(eblanShortcutInfos: List<EblanShortcutInfo>) {
@@ -41,24 +46,18 @@ class DefaultEblanShortcutInfoRepository @Inject constructor(private val eblanSh
         eblanShortcutInfoDao.upsertEblanShortcutInfoEntities(entities = entities)
     }
 
-    override suspend fun deleteEblanShortcutInfos(eblanShortcutInfos: List<EblanShortcutInfo>) {
-        val entities = eblanShortcutInfos.map { eblanShortcutInfo ->
-            eblanShortcutInfo.asEntity()
-        }
-
-        eblanShortcutInfoDao.deleteEblanShortcutInfoEntities(entities = entities)
+    override suspend fun deleteEblanShortcutInfos(deleteEblanShortcutInfos: List<DeleteEblanShortcutInfo>) {
+        eblanShortcutInfoDao.deleteEblanShortcutInfoEntities(deleteEblanShortcutInfos = deleteEblanShortcutInfos)
     }
 
     override suspend fun getEblanShortcutInfos(
         serialNumber: Long,
         packageName: String,
-    ): List<EblanShortcutInfo> {
-        return eblanShortcutInfoDao.getEblanShortcutInfoEntities(
-            serialNumber = serialNumber,
-            packageName = packageName,
-        ).map { entity ->
-            entity.asModel()
-        }
+    ): List<EblanShortcutInfo> = eblanShortcutInfoDao.getEblanShortcutInfoEntities(
+        serialNumber = serialNumber,
+        packageName = packageName,
+    ).map { entity ->
+        entity.asModel()
     }
 
     override suspend fun deleteEblanShortcutInfos(
@@ -71,29 +70,27 @@ class DefaultEblanShortcutInfoRepository @Inject constructor(private val eblanSh
         )
     }
 
-    private fun EblanShortcutInfo.asEntity(): EblanShortcutInfoEntity {
-        return EblanShortcutInfoEntity(
-            shortcutId = shortcutId,
-            serialNumber = serialNumber,
-            packageName = packageName,
-            shortLabel = shortLabel,
-            longLabel = longLabel,
-            icon = icon,
-            shortcutQueryFlag = shortcutQueryFlag,
-            isEnabled = isEnabled,
-        )
-    }
+    private fun EblanShortcutInfo.asEntity(): EblanShortcutInfoEntity = EblanShortcutInfoEntity(
+        shortcutId = shortcutId,
+        serialNumber = serialNumber,
+        packageName = packageName,
+        shortLabel = shortLabel,
+        longLabel = longLabel,
+        icon = icon,
+        shortcutQueryFlag = shortcutQueryFlag,
+        isEnabled = isEnabled,
+        lastUpdateTime = lastUpdateTime,
+    )
 
-    private fun EblanShortcutInfoEntity.asModel(): EblanShortcutInfo {
-        return EblanShortcutInfo(
-            shortcutId = shortcutId,
-            serialNumber = serialNumber,
-            packageName = packageName,
-            shortLabel = shortLabel,
-            longLabel = longLabel,
-            icon = icon,
-            shortcutQueryFlag = shortcutQueryFlag,
-            isEnabled = isEnabled,
-        )
-    }
+    private fun EblanShortcutInfoEntity.asModel(): EblanShortcutInfo = EblanShortcutInfo(
+        shortcutId = shortcutId,
+        serialNumber = serialNumber,
+        packageName = packageName,
+        shortLabel = shortLabel,
+        longLabel = longLabel,
+        icon = icon,
+        shortcutQueryFlag = shortcutQueryFlag,
+        isEnabled = isEnabled,
+        lastUpdateTime = lastUpdateTime,
+    )
 }

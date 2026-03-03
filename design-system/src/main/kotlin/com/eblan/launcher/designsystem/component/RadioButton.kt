@@ -21,12 +21,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
@@ -35,6 +37,7 @@ fun EblanRadioButton(
     modifier: Modifier = Modifier,
     text: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Row(
@@ -42,6 +45,7 @@ fun EblanRadioButton(
             .fillMaxWidth()
             .selectable(
                 selected = selected,
+                enabled = enabled,
                 onClick = onClick,
                 role = Role.RadioButton,
             )
@@ -50,11 +54,17 @@ fun EblanRadioButton(
     ) {
         RadioButton(
             selected = selected,
+            enabled = enabled,
             onClick = null,
         )
 
         Text(
             text = text,
+            color = if (enabled) {
+                Color.Unspecified
+            } else {
+                LocalContentColor.current.copy(alpha = 0.5f)
+            },
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(start = 16.dp),
         )

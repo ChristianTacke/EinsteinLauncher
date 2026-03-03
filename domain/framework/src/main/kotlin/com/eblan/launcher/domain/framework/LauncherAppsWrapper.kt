@@ -17,9 +17,13 @@
  */
 package com.eblan.launcher.domain.framework
 
+import com.eblan.launcher.domain.model.EblanUser
+import com.eblan.launcher.domain.model.FastLauncherAppsActivityInfo
+import com.eblan.launcher.domain.model.FastLauncherAppsShortcutInfo
 import com.eblan.launcher.domain.model.LauncherAppsActivityInfo
 import com.eblan.launcher.domain.model.LauncherAppsEvent
 import com.eblan.launcher.domain.model.LauncherAppsShortcutInfo
+import com.eblan.launcher.domain.model.ShortcutConfigActivityInfo
 import kotlinx.coroutines.flow.Flow
 
 interface LauncherAppsWrapper {
@@ -29,12 +33,21 @@ interface LauncherAppsWrapper {
 
     suspend fun getActivityList(): List<LauncherAppsActivityInfo>
 
+    suspend fun getFastActivityList(): List<FastLauncherAppsActivityInfo>
+
     suspend fun getActivityList(
         serialNumber: Long,
         packageName: String,
     ): List<LauncherAppsActivityInfo>
 
+    suspend fun getFastActivityList(
+        serialNumber: Long,
+        packageName: String,
+    ): List<FastLauncherAppsActivityInfo>
+
     suspend fun getShortcuts(): List<LauncherAppsShortcutInfo>?
+
+    suspend fun getFastShortcuts(): List<FastLauncherAppsShortcutInfo>?
 
     suspend fun getShortcutsByPackageName(
         serialNumber: Long,
@@ -44,5 +57,7 @@ interface LauncherAppsWrapper {
     suspend fun getShortcutConfigActivityList(
         serialNumber: Long,
         packageName: String,
-    ): List<LauncherAppsActivityInfo>
+    ): List<ShortcutConfigActivityInfo>
+
+    fun getUser(serialNumber: Long): EblanUser
 }

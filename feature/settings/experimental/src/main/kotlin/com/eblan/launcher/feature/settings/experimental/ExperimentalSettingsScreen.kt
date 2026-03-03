@@ -38,7 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eblan.launcher.designsystem.icon.EblanLauncherIcons
 import com.eblan.launcher.domain.model.ExperimentalSettings
@@ -143,6 +143,17 @@ private fun Success(
                 subtitle = "Prevent other grid items from moving",
                 onCheckedChange = { lockMovement ->
                     onUpdateExperimentalSettings(experimentalSettings.copy(lockMovement = lockMovement))
+                },
+            )
+
+            HorizontalDivider(modifier = Modifier.fillMaxWidth())
+
+            SettingsSwitch(
+                checked = experimentalSettings.klwpIntegration,
+                title = "KLWP Integration",
+                subtitle = "Send broadcasts to KLWP Live Wallpaper",
+                onCheckedChange = { klwpIntegration ->
+                    onUpdateExperimentalSettings(experimentalSettings.copy(klwpIntegration = klwpIntegration))
                 },
             )
         }

@@ -50,17 +50,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest.Builder
+import coil3.request.ImageRequest
 import coil3.request.addLastModifiedToFileCacheKey
 import com.eblan.launcher.designsystem.icon.EblanLauncherIcons
+import com.eblan.launcher.domain.model.ApplicationInfoGridItem
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemData
 import com.eblan.launcher.domain.model.GridItemSettings
-import com.eblan.launcher.domain.model.HorizontalAlignment
-import com.eblan.launcher.domain.model.VerticalArrangement
+import com.eblan.launcher.domain.model.TextColor
 import com.eblan.launcher.feature.home.model.Drag
 import com.eblan.launcher.feature.home.model.Screen
 import com.eblan.launcher.feature.home.model.SharedElementKey
+import com.eblan.launcher.feature.home.util.getGridItemTextColor
+import com.eblan.launcher.feature.home.util.getHorizontalAlignment
+import com.eblan.launcher.feature.home.util.getSystemTextColor
+import com.eblan.launcher.feature.home.util.getVerticalArrangement
 import com.eblan.launcher.ui.local.LocalAppWidgetHost
 import com.eblan.launcher.ui.local.LocalAppWidgetManager
 import com.eblan.launcher.ui.local.LocalSettings
@@ -70,19 +74,42 @@ import com.eblan.launcher.ui.local.LocalSettings
 internal fun SharedTransitionScope.GridItemContent(
     modifier: Modifier = Modifier,
     gridItem: GridItem,
-    textColor: Color,
+    textColor: TextColor,
     gridItemSettings: GridItemSettings,
     isDragging: Boolean,
     statusBarNotifications: Map<String, Int>,
     hasShortcutHostPermission: Boolean,
-    drag: Drag = Drag.End,
+    drag: Drag,
     iconPackFilePaths: Map<String, String>,
+    screen: Screen,
+    isScrollInProgress: Boolean,
+    folderGridItem: GridItem?,
 ) {
     key(gridItem.id) {
+        val currentGridItemSettings = if (gridItem.override) {
+            gridItem.gridItemSettings
+        } else {
+            gridItemSettings
+        }
+
+        val currentTextColor = if (gridItem.override) {
+            getGridItemTextColor(
+                systemTextColor = textColor,
+                systemCustomTextColor = gridItemSettings.customTextColor,
+                gridItemTextColor = gridItem.gridItemSettings.textColor,
+                gridItemCustomTextColor = gridItem.gridItemSettings.customTextColor,
+            )
+        } else {
+            getSystemTextColor(
+                systemTextColor = textColor,
+                systemCustomTextColor = gridItemSettings.customTextColor,
+            )
+        }
+
         if (isDragging) {
             WhiteBox(
                 modifier = modifier,
-                textColor = textColor,
+                textColor = currentTextColor,
             )
         } else {
             when (val data = gridItem.data) {
@@ -91,11 +118,13 @@ internal fun SharedTransitionScope.GridItemContent(
                         modifier = modifier,
                         gridItem = gridItem,
                         data = data,
-                        textColor = textColor,
-                        gridItemSettings = gridItemSettings,
+                        textColor = currentTextColor,
+                        gridItemSettings = currentGridItemSettings,
                         statusBarNotifications = statusBarNotifications,
                         drag = drag,
                         iconPackFilePaths = iconPackFilePaths,
+                        screen = screen,
+                        isScrollInProgress = isScrollInProgress,
                     )
                 }
 
@@ -105,6 +134,8 @@ internal fun SharedTransitionScope.GridItemContent(
                         gridItem = gridItem,
                         data = data,
                         drag = drag,
+                        screen = screen,
+                        isScrollInProgress = isScrollInProgress,
                     )
                 }
 
@@ -113,10 +144,12 @@ internal fun SharedTransitionScope.GridItemContent(
                         modifier = modifier,
                         gridItem = gridItem,
                         data = data,
-                        textColor = textColor,
-                        gridItemSettings = gridItemSettings,
+                        textColor = currentTextColor,
+                        gridItemSettings = currentGridItemSettings,
                         hasShortcutHostPermission = hasShortcutHostPermission,
                         drag = drag,
+                        screen = screen,
+                        isScrollInProgress = isScrollInProgress,
                     )
                 }
 
@@ -125,10 +158,13 @@ internal fun SharedTransitionScope.GridItemContent(
                         modifier = modifier,
                         gridItem = gridItem,
                         data = data,
-                        textColor = textColor,
-                        gridItemSettings = gridItemSettings,
+                        textColor = currentTextColor,
+                        gridItemSettings = currentGridItemSettings,
                         drag = drag,
                         iconPackFilePaths = iconPackFilePaths,
+                        screen = screen,
+                        isScrollInProgress = isScrollInProgress,
+                        folderGridItem = folderGridItem,
                     )
                 }
 
@@ -137,9 +173,11 @@ internal fun SharedTransitionScope.GridItemContent(
                         modifier = modifier,
                         gridItem = gridItem,
                         data = data,
-                        textColor = textColor,
-                        gridItemSettings = gridItemSettings,
+                        textColor = currentTextColor,
+                        gridItemSettings = currentGridItemSettings,
                         drag = drag,
+                        screen = screen,
+                        isScrollInProgress = isScrollInProgress,
                     )
                 }
             }
@@ -148,7 +186,7 @@ internal fun SharedTransitionScope.GridItemContent(
 }
 
 @Composable
-private fun WhiteBox(
+internal fun WhiteBox(
     modifier: Modifier,
     textColor: Color,
 ) {
@@ -188,6 +226,355 @@ private fun WhiteBox(
     }
 }
 
+@Composable
+internal fun ApplicationInfoGridItemContent(
+    modifier: Modifier = Modifier,
+    data: GridItemData.ApplicationInfo,
+    textColor: Color,
+    gridItemSettings: GridItemSettings,
+    statusBarNotifications: Map<String, Int>,
+    iconPackFilePaths: Map<String, String>,
+) {
+    val settings = LocalSettings.current
+
+    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+
+    val icon = iconPackFilePaths[data.componentName] ?: data.icon
+
+    val hasNotifications =
+        statusBarNotifications[data.packageName] != null && (
+            statusBarNotifications[data.packageName]
+                ?: 0
+            ) > 0
+
+    Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(data.customIcon ?: icon)
+                .addLastModifiedToFileCacheKey(true).build(),
+            contentDescription = null,
+            modifier = modifier.matchParentSize(),
+        )
+
+        if (settings.isNotificationAccessGranted() && hasNotifications) {
+            Box(
+                modifier = Modifier
+                    .size((gridItemSettings.iconSize * 0.3).dp)
+                    .align(Alignment.TopEnd)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape,
+                    ),
+            )
+        }
+
+        if (data.serialNumber != 0L) {
+            ElevatedCard(
+                modifier = Modifier
+                    .size((gridItemSettings.iconSize * 0.4).dp)
+                    .align(Alignment.BottomEnd),
+            ) {
+                Icon(
+                    imageVector = EblanLauncherIcons.Work,
+                    contentDescription = null,
+                    modifier = Modifier.padding(2.dp),
+                )
+            }
+        }
+    }
+
+    if (gridItemSettings.showLabel) {
+        Text(
+            text = data.customLabel ?: data.label,
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = maxLines,
+            fontSize = gridItemSettings.textSize.sp,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun ShortcutInfoGridItemContent(
+    modifier: Modifier = Modifier,
+    data: GridItemData.ShortcutInfo,
+    textColor: Color,
+    gridItemSettings: GridItemSettings,
+    hasShortcutHostPermission: Boolean,
+) {
+    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+
+    val customIcon = data.customIcon ?: data.icon
+
+    val customShortLabel = data.customShortLabel ?: data.shortLabel
+
+    val alpha = if (hasShortcutHostPermission && data.isEnabled) 1f else 0.3f
+
+    Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
+        AsyncImage(
+            model = customIcon,
+            modifier = modifier
+                .matchParentSize()
+                .alpha(alpha),
+            contentDescription = null,
+        )
+
+        AsyncImage(
+            model = data.eblanApplicationInfoIcon,
+            modifier = Modifier
+                .size((gridItemSettings.iconSize * 0.25).dp)
+                .align(Alignment.BottomEnd)
+                .alpha(alpha),
+            contentDescription = null,
+        )
+    }
+
+    if (gridItemSettings.showLabel) {
+        Text(
+            modifier = Modifier.alpha(alpha),
+            text = customShortLabel,
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = maxLines,
+            fontSize = gridItemSettings.textSize.sp,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun SharedTransitionScope.FolderGridItemContent(
+    modifier: Modifier = Modifier,
+    gridItemSettings: GridItemSettings,
+    data: GridItemData.Folder,
+    iconPackFilePaths: Map<String, String>,
+    textColor: Color,
+    screen: Screen,
+    drag: Drag,
+    isScrollInProgress: Boolean,
+    folderGridItem: GridItem?,
+) {
+    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+
+    val commonModifier = modifier.size(gridItemSettings.iconSize.dp)
+
+    if (data.icon != null) {
+        AsyncImage(
+            model = data.icon,
+            contentDescription = null,
+            modifier = commonModifier,
+        )
+    } else if (folderGridItem != null && data.id == folderGridItem.id) {
+        Box(
+            modifier = commonModifier.background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(5.dp),
+            ),
+        )
+    } else {
+        Box(
+            modifier = commonModifier.background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(5.dp),
+            ),
+        ) {
+            FlowRow(
+                modifier = Modifier.matchParentSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalArrangement = Arrangement.SpaceEvenly,
+                maxItemsInEachRow = 3,
+                maxLines = 3,
+            ) {
+                data.previewGridItemsByPage.forEach { applicationInfoFolderGridItem ->
+                    val folderGridItemModifier =
+                        Modifier
+                            .sharedElementWithCallerManagedVisibility(
+                                rememberSharedContentState(
+                                    key = SharedElementKey(
+                                        id = applicationInfoFolderGridItem.id,
+                                        screen = screen,
+                                    ),
+                                ),
+                                visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
+                            )
+                            .size((gridItemSettings.iconSize * 0.25).dp)
+
+                    val icon =
+                        iconPackFilePaths[applicationInfoFolderGridItem.componentName]
+                            ?: applicationInfoFolderGridItem.icon
+
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(applicationInfoFolderGridItem.customIcon ?: icon)
+                            .addLastModifiedToFileCacheKey(true).build(),
+                        contentDescription = null,
+                        modifier = folderGridItemModifier,
+                    )
+                }
+            }
+        }
+    }
+
+    if (gridItemSettings.showLabel) {
+        Text(
+            text = data.label,
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = maxLines,
+            fontSize = gridItemSettings.textSize.sp,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun ShortcutConfigGridItemContent(
+    modifier: Modifier = Modifier,
+    data: GridItemData.ShortcutConfig,
+    textColor: Color,
+    gridItemSettings: GridItemSettings,
+) {
+    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+
+    val icon = when {
+        data.customIcon != null -> {
+            data.customIcon
+        }
+
+        data.shortcutIntentIcon != null -> {
+            data.shortcutIntentIcon
+        }
+
+        data.activityIcon != null -> {
+            data.activityIcon
+        }
+
+        else -> {
+            data.applicationIcon
+        }
+    }
+
+    val label = when {
+        data.customLabel != null -> {
+            data.customLabel
+        }
+
+        data.shortcutIntentName != null -> {
+            data.shortcutIntentName
+        }
+
+        data.activityLabel != null -> {
+            data.activityLabel
+        }
+
+        else -> {
+            data.applicationLabel
+        }
+    }
+
+    Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(icon)
+                .addLastModifiedToFileCacheKey(true).build(),
+            contentDescription = null,
+            modifier = modifier.matchParentSize(),
+        )
+
+        if (data.serialNumber != 0L) {
+            ElevatedCard(
+                modifier = Modifier
+                    .size((gridItemSettings.iconSize * 0.4).dp)
+                    .align(Alignment.BottomEnd),
+            ) {
+                Icon(
+                    imageVector = EblanLauncherIcons.Work,
+                    contentDescription = null,
+                    modifier = Modifier.padding(2.dp),
+                )
+            }
+        }
+    }
+
+    if (gridItemSettings.showLabel) {
+        Text(
+            text = (label).toString(),
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = maxLines,
+            fontSize = gridItemSettings.textSize.sp,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun ApplicationInfoFolderGridItemContent(
+    modifier: Modifier = Modifier,
+    gridItem: ApplicationInfoGridItem,
+    textColor: Color,
+    gridItemSettings: GridItemSettings,
+    statusBarNotifications: Map<String, Int>,
+    iconPackFilePaths: Map<String, String>,
+) {
+    val settings = LocalSettings.current
+
+    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+
+    val icon = iconPackFilePaths[gridItem.componentName] ?: gridItem.icon
+
+    val hasNotifications =
+        statusBarNotifications[gridItem.packageName] != null && (
+            statusBarNotifications[gridItem.packageName]
+                ?: 0
+            ) > 0
+
+    Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(gridItem.customIcon ?: icon)
+                .addLastModifiedToFileCacheKey(true).build(),
+            contentDescription = null,
+            modifier = modifier.matchParentSize(),
+        )
+
+        if (settings.isNotificationAccessGranted() && hasNotifications) {
+            Box(
+                modifier = Modifier
+                    .size((gridItemSettings.iconSize * 0.3).dp)
+                    .align(Alignment.TopEnd)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape,
+                    ),
+            )
+        }
+
+        if (gridItem.serialNumber != 0L) {
+            ElevatedCard(
+                modifier = Modifier
+                    .size((gridItemSettings.iconSize * 0.4).dp)
+                    .align(Alignment.BottomEnd),
+            ) {
+                Icon(
+                    imageVector = EblanLauncherIcons.Work,
+                    contentDescription = null,
+                    modifier = Modifier.padding(2.dp),
+                )
+            }
+        }
+    }
+
+    if (gridItemSettings.showLabel) {
+        Text(
+            text = gridItem.customLabel ?: gridItem.label,
+            color = textColor,
+            textAlign = TextAlign.Center,
+            maxLines = maxLines,
+            fontSize = gridItemSettings.textSize.sp,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun SharedTransitionScope.ApplicationInfoGridItem(
@@ -199,90 +586,42 @@ private fun SharedTransitionScope.ApplicationInfoGridItem(
     statusBarNotifications: Map<String, Int>,
     drag: Drag,
     iconPackFilePaths: Map<String, String>,
+    screen: Screen,
+    isScrollInProgress: Boolean,
 ) {
-    val context = LocalContext.current
+    val horizontalAlignment =
+        getHorizontalAlignment(horizontalAlignment = gridItemSettings.horizontalAlignment)
 
-    val settings = LocalSettings.current
-
-    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
-
-    val icon = iconPackFilePaths[data.componentName] ?: data.icon
-
-    val horizontalAlignment = when (gridItemSettings.horizontalAlignment) {
-        HorizontalAlignment.Start -> Alignment.Start
-        HorizontalAlignment.CenterHorizontally -> Alignment.CenterHorizontally
-        HorizontalAlignment.End -> Alignment.End
-    }
-
-    val verticalArrangement = when (gridItemSettings.verticalArrangement) {
-        VerticalArrangement.Top -> Arrangement.Top
-        VerticalArrangement.Center -> Arrangement.Center
-        VerticalArrangement.Bottom -> Arrangement.Bottom
-    }
-
-    val hasNotifications =
-        statusBarNotifications[data.packageName] != null && statusBarNotifications[data.packageName]!! > 0
+    val verticalArrangement =
+        getVerticalArrangement(verticalArrangement = gridItemSettings.verticalArrangement)
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(gridItemSettings.padding.dp)
+            .background(
+                color = Color(gridItemSettings.customBackgroundColor),
+                shape = RoundedCornerShape(size = gridItemSettings.cornerRadius.dp),
+            ),
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
     ) {
-        Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
-            AsyncImage(
-                model = Builder(context).data(data.customIcon ?: icon)
-                    .addLastModifiedToFileCacheKey(true).build(),
-                contentDescription = null,
-                modifier = Modifier
-                    .sharedElementWithCallerManagedVisibility(
-                        rememberSharedContentState(
-                            key = SharedElementKey(
-                                id = gridItem.id,
-                                screen = Screen.Drag,
-                            ),
-                        ),
-                        visible = drag == Drag.Cancel || drag == Drag.End,
-                    )
-                    .matchParentSize(),
-            )
-
-            if (settings.isNotificationAccessGranted() && hasNotifications) {
-                Box(
-                    modifier = Modifier
-                        .size((gridItemSettings.iconSize * 0.3).dp)
-                        .align(Alignment.TopEnd)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape,
-                        ),
-                )
-            }
-
-            if (data.serialNumber != 0L) {
-                ElevatedCard(
-                    modifier = Modifier
-                        .size((gridItemSettings.iconSize * 0.4).dp)
-                        .align(Alignment.BottomEnd),
-                ) {
-                    Icon(
-                        imageVector = EblanLauncherIcons.Work,
-                        contentDescription = null,
-                        modifier = Modifier.padding(2.dp),
-                    )
-                }
-            }
-        }
-
-        if (gridItemSettings.showLabel) {
-            Text(
-                text = data.customLabel ?: data.label,
-                color = textColor,
-                textAlign = TextAlign.Center,
-                maxLines = maxLines,
-                fontSize = gridItemSettings.textSize.sp,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        ApplicationInfoGridItemContent(
+            modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                rememberSharedContentState(
+                    key = SharedElementKey(
+                        id = gridItem.id,
+                        screen = screen,
+                    ),
+                ),
+                visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
+            ),
+            data = data,
+            textColor = textColor,
+            gridItemSettings = gridItemSettings,
+            statusBarNotifications = statusBarNotifications,
+            iconPackFilePaths = iconPackFilePaths,
+        )
     }
 }
 
@@ -296,71 +635,41 @@ private fun SharedTransitionScope.ShortcutInfoGridItem(
     gridItemSettings: GridItemSettings,
     hasShortcutHostPermission: Boolean,
     drag: Drag,
+    screen: Screen,
+    isScrollInProgress: Boolean,
 ) {
-    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
+    val horizontalAlignment =
+        getHorizontalAlignment(horizontalAlignment = gridItemSettings.horizontalAlignment)
 
-    val horizontalAlignment = when (gridItemSettings.horizontalAlignment) {
-        HorizontalAlignment.Start -> Alignment.Start
-        HorizontalAlignment.CenterHorizontally -> Alignment.CenterHorizontally
-        HorizontalAlignment.End -> Alignment.End
-    }
-
-    val verticalArrangement = when (gridItemSettings.verticalArrangement) {
-        VerticalArrangement.Top -> Arrangement.Top
-        VerticalArrangement.Center -> Arrangement.Center
-        VerticalArrangement.Bottom -> Arrangement.Bottom
-    }
-
-    val customIcon = data.customIcon ?: data.icon
-
-    val customShortLabel = data.customShortLabel ?: data.shortLabel
-
-    val alpha = if (hasShortcutHostPermission && data.isEnabled) 1f else 0.3f
+    val verticalArrangement =
+        getVerticalArrangement(verticalArrangement = gridItemSettings.verticalArrangement)
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(gridItemSettings.padding.dp)
+            .background(
+                color = Color(gridItemSettings.customBackgroundColor),
+                shape = RoundedCornerShape(size = gridItemSettings.cornerRadius.dp),
+            ),
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
     ) {
-        Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
-            AsyncImage(
-                model = customIcon,
-                modifier = Modifier
-                    .sharedElementWithCallerManagedVisibility(
-                        rememberSharedContentState(
-                            key = SharedElementKey(
-                                id = gridItem.id,
-                                screen = Screen.Drag,
-                            ),
-                        ),
-                        visible = drag == Drag.Cancel || drag == Drag.End,
-                    )
-                    .matchParentSize()
-                    .alpha(alpha),
-                contentDescription = null,
-            )
-
-            AsyncImage(
-                model = data.eblanApplicationInfoIcon,
-                modifier = Modifier
-                    .size((gridItemSettings.iconSize * 0.25).dp)
-                    .align(Alignment.BottomEnd)
-                    .alpha(alpha),
-                contentDescription = null,
-            )
-        }
-
-        if (gridItemSettings.showLabel) {
-            Text(
-                modifier = Modifier.alpha(alpha),
-                text = customShortLabel,
-                color = textColor,
-                textAlign = TextAlign.Center,
-                maxLines = maxLines,
-                fontSize = gridItemSettings.textSize.sp,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        ShortcutInfoGridItemContent(
+            modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                sharedContentState = rememberSharedContentState(
+                    key = SharedElementKey(
+                        id = gridItem.id,
+                        screen = screen,
+                    ),
+                ),
+                visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
+            ),
+            data = data,
+            textColor = textColor,
+            gridItemSettings = gridItemSettings,
+            hasShortcutHostPermission = hasShortcutHostPermission,
+        )
     }
 }
 
@@ -374,156 +683,46 @@ private fun SharedTransitionScope.FolderGridItem(
     gridItemSettings: GridItemSettings,
     drag: Drag,
     iconPackFilePaths: Map<String, String>,
+    screen: Screen,
+    isScrollInProgress: Boolean,
+    folderGridItem: GridItem?,
 ) {
-    val context = LocalContext.current
+    val horizontalAlignment =
+        getHorizontalAlignment(horizontalAlignment = gridItemSettings.horizontalAlignment)
 
-    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
-
-    val horizontalAlignment = when (gridItemSettings.horizontalAlignment) {
-        HorizontalAlignment.Start -> Alignment.Start
-        HorizontalAlignment.CenterHorizontally -> Alignment.CenterHorizontally
-        HorizontalAlignment.End -> Alignment.End
-    }
-
-    val verticalArrangement = when (gridItemSettings.verticalArrangement) {
-        VerticalArrangement.Top -> Arrangement.Top
-        VerticalArrangement.Center -> Arrangement.Center
-        VerticalArrangement.Bottom -> Arrangement.Bottom
-    }
+    val verticalArrangement =
+        getVerticalArrangement(verticalArrangement = gridItemSettings.verticalArrangement)
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(gridItemSettings.padding.dp)
+            .background(
+                color = Color(gridItemSettings.customBackgroundColor),
+                shape = RoundedCornerShape(size = gridItemSettings.cornerRadius.dp),
+            ),
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
     ) {
-        val commonModifier = Modifier
-            .sharedElementWithCallerManagedVisibility(
-                rememberSharedContentState(
+        FolderGridItemContent(
+            modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                sharedContentState = rememberSharedContentState(
                     key = SharedElementKey(
                         id = gridItem.id,
-                        screen = Screen.Drag,
+                        screen = screen,
                     ),
                 ),
-                visible = drag == Drag.Cancel || drag == Drag.End,
-            )
-            .size(gridItemSettings.iconSize.dp)
-
-        if (data.gridItems.isNotEmpty()) {
-            val maxItemsInEachRow = 3
-
-            FlowRow(
-                modifier = commonModifier.background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(5.dp),
-                ),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalArrangement = Arrangement.SpaceEvenly,
-                maxItemsInEachRow = maxItemsInEachRow,
-                maxLines = maxItemsInEachRow,
-            ) {
-                data.gridItems
-                    .sortedWith(compareBy({ it.startRow }, { it.startColumn }))
-                    .take(maxItemsInEachRow * maxItemsInEachRow)
-                    .forEach { gridItem ->
-                        val gridItemModifier = Modifier
-                            .sharedElementWithCallerManagedVisibility(
-                                rememberSharedContentState(
-                                    key = SharedElementKey(
-                                        id = gridItem.id,
-                                        screen = Screen.Drag,
-                                    ),
-                                ),
-                                visible = drag == Drag.Cancel || drag == Drag.End,
-                            )
-                            .size((gridItemSettings.iconSize * 0.25).dp)
-
-                        when (val currentData = gridItem.data) {
-                            is GridItemData.ApplicationInfo -> {
-                                val icon =
-                                    iconPackFilePaths[currentData.componentName] ?: currentData.icon
-
-                                AsyncImage(
-                                    model = Builder(context).data(currentData.customIcon ?: icon)
-                                        .addLastModifiedToFileCacheKey(true).build(),
-                                    contentDescription = null,
-                                    modifier = gridItemModifier,
-                                )
-                            }
-
-                            is GridItemData.ShortcutInfo -> {
-                                AsyncImage(
-                                    model = currentData.icon,
-                                    contentDescription = null,
-                                    modifier = gridItemModifier,
-                                )
-                            }
-
-                            is GridItemData.Widget -> {
-                                AsyncImage(
-                                    model = currentData.preview,
-                                    contentDescription = null,
-                                    modifier = gridItemModifier,
-                                )
-                            }
-
-                            is GridItemData.Folder -> {
-                                if (currentData.icon != null) {
-                                    AsyncImage(
-                                        model = currentData.icon,
-                                        contentDescription = null,
-                                        modifier = gridItemModifier,
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = EblanLauncherIcons.Folder,
-                                        contentDescription = null,
-                                        modifier = gridItemModifier,
-                                        tint = textColor,
-                                    )
-                                }
-                            }
-
-                            is GridItemData.ShortcutConfig -> {
-                                val icon = when {
-                                    currentData.shortcutIntentIcon != null -> currentData.shortcutIntentIcon
-                                    currentData.activityIcon != null -> currentData.activityIcon
-                                    else -> currentData.applicationIcon
-                                }
-
-                                AsyncImage(
-                                    model = currentData.customIcon ?: icon,
-                                    contentDescription = null,
-                                    modifier = gridItemModifier,
-                                )
-                            }
-                        }
-                    }
-            }
-        } else if (data.icon != null) {
-            AsyncImage(
-                model = data.icon,
-                contentDescription = null,
-                modifier = commonModifier,
-            )
-        } else {
-            Icon(
-                imageVector = EblanLauncherIcons.Folder,
-                contentDescription = null,
-                modifier = commonModifier,
-                tint = textColor,
-            )
-        }
-
-        if (gridItemSettings.showLabel) {
-            Text(
-                text = data.label,
-                color = textColor,
-                textAlign = TextAlign.Center,
-                maxLines = maxLines,
-                fontSize = gridItemSettings.textSize.sp,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+                visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
+            ),
+            gridItemSettings = gridItemSettings,
+            data = data,
+            iconPackFilePaths = iconPackFilePaths,
+            textColor = textColor,
+            screen = screen,
+            drag = drag,
+            isScrollInProgress = isScrollInProgress,
+            folderGridItem = folderGridItem,
+        )
     }
 }
 
@@ -534,6 +733,8 @@ private fun SharedTransitionScope.WidgetGridItem(
     gridItem: GridItem,
     data: GridItemData.Widget,
     drag: Drag,
+    screen: Screen,
+    isScrollInProgress: Boolean,
 ) {
     val appWidgetManager = LocalAppWidgetManager.current
 
@@ -546,10 +747,10 @@ private fun SharedTransitionScope.WidgetGridItem(
             rememberSharedContentState(
                 key = SharedElementKey(
                     id = gridItem.id,
-                    screen = Screen.Drag,
+                    screen = screen,
                 ),
             ),
-            visible = drag == Drag.Cancel || drag == Drag.End,
+            visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
         )
         .fillMaxSize()
 
@@ -581,82 +782,39 @@ private fun SharedTransitionScope.ShortcutConfigGridItem(
     textColor: Color,
     gridItemSettings: GridItemSettings,
     drag: Drag,
+    screen: Screen,
+    isScrollInProgress: Boolean,
 ) {
-    val context = LocalContext.current
+    val horizontalAlignment =
+        getHorizontalAlignment(horizontalAlignment = gridItemSettings.horizontalAlignment)
 
-    val maxLines = if (gridItemSettings.singleLineLabel) 1 else Int.MAX_VALUE
-
-    val horizontalAlignment = when (gridItemSettings.horizontalAlignment) {
-        HorizontalAlignment.Start -> Alignment.Start
-        HorizontalAlignment.CenterHorizontally -> Alignment.CenterHorizontally
-        HorizontalAlignment.End -> Alignment.End
-    }
-
-    val verticalArrangement = when (gridItemSettings.verticalArrangement) {
-        VerticalArrangement.Top -> Arrangement.Top
-        VerticalArrangement.Center -> Arrangement.Center
-        VerticalArrangement.Bottom -> Arrangement.Bottom
-    }
-
-    val icon = when {
-        data.shortcutIntentIcon != null -> data.shortcutIntentIcon
-        data.activityIcon != null -> data.activityIcon
-        else -> data.applicationIcon
-    }
-
-    val label = when {
-        data.shortcutIntentName != null -> data.shortcutIntentName
-        data.activityLabel != null -> data.activityLabel
-        else -> data.applicationLabel
-    }
+    val verticalArrangement =
+        getVerticalArrangement(verticalArrangement = gridItemSettings.verticalArrangement)
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(gridItemSettings.padding.dp)
+            .background(
+                color = Color(gridItemSettings.customBackgroundColor),
+                shape = RoundedCornerShape(size = gridItemSettings.cornerRadius.dp),
+            ),
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
     ) {
-        Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
-            AsyncImage(
-                model = Builder(context).data(data.customIcon ?: icon)
-                    .addLastModifiedToFileCacheKey(true).build(),
-                contentDescription = null,
-                modifier = Modifier
-                    .sharedElementWithCallerManagedVisibility(
-                        rememberSharedContentState(
-                            key = SharedElementKey(
-                                id = gridItem.id,
-                                screen = Screen.Drag,
-                            ),
-                        ),
-                        visible = drag == Drag.Cancel || drag == Drag.End,
-                    )
-                    .matchParentSize(),
-            )
-
-            if (data.serialNumber != 0L) {
-                ElevatedCard(
-                    modifier = Modifier
-                        .size((gridItemSettings.iconSize * 0.4).dp)
-                        .align(Alignment.BottomEnd),
-                ) {
-                    Icon(
-                        imageVector = EblanLauncherIcons.Work,
-                        contentDescription = null,
-                        modifier = Modifier.padding(2.dp),
-                    )
-                }
-            }
-        }
-
-        if (gridItemSettings.showLabel) {
-            Text(
-                text = (data.customLabel ?: label).toString(),
-                color = textColor,
-                textAlign = TextAlign.Center,
-                maxLines = maxLines,
-                fontSize = gridItemSettings.textSize.sp,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        ShortcutConfigGridItemContent(
+            modifier = Modifier.sharedElementWithCallerManagedVisibility(
+                sharedContentState = rememberSharedContentState(
+                    key = SharedElementKey(
+                        id = gridItem.id,
+                        screen = screen,
+                    ),
+                ),
+                visible = !isScrollInProgress && (drag == Drag.Cancel || drag == Drag.End),
+            ),
+            data = data,
+            textColor = textColor,
+            gridItemSettings = gridItemSettings,
+        )
     }
 }

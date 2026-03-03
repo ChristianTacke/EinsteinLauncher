@@ -22,6 +22,7 @@ import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.Upsert
 import com.eblan.launcher.data.room.entity.EblanAppWidgetProviderInfoEntity
+import com.eblan.launcher.domain.model.DeleteEblanAppWidgetProviderInfo
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -30,11 +31,14 @@ interface EblanAppWidgetProviderInfoDao {
     @Query("SELECT * FROM EblanAppWidgetProviderInfoEntity")
     fun getEblanAppWidgetProviderInfoEntities(): Flow<List<EblanAppWidgetProviderInfoEntity>>
 
+    @Query("SELECT * FROM EblanAppWidgetProviderInfoEntity")
+    fun getEblanAppWidgetProviderInfoEntityList(): List<EblanAppWidgetProviderInfoEntity>
+
     @Upsert
     suspend fun upsertEblanAppWidgetProviderInfoEntities(entities: List<EblanAppWidgetProviderInfoEntity>)
 
-    @Delete
-    suspend fun deleteEblanAppWidgetProviderInfoEntities(entities: List<EblanAppWidgetProviderInfoEntity>)
+    @Delete(EblanAppWidgetProviderInfoEntity::class)
+    suspend fun deleteEblanAppWidgetProviderInfoEntities(deleteEblanAppWidgetProviderInfos: List<DeleteEblanAppWidgetProviderInfo>)
 
     @Query("SELECT * FROM EblanAppWidgetProviderInfoEntity WHERE packageName = :packageName")
     suspend fun getEblanAppWidgetProviderInfoEntitiesByPackageName(packageName: String): List<EblanAppWidgetProviderInfoEntity>

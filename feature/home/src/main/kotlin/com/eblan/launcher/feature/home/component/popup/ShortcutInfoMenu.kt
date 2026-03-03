@@ -17,7 +17,6 @@
  */
 package com.eblan.launcher.feature.home.component.popup
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -37,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -50,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import coil3.compose.AsyncImage
 import com.eblan.launcher.domain.model.Associate
+import com.eblan.launcher.domain.model.EblanAction
+import com.eblan.launcher.domain.model.EblanActionType
 import com.eblan.launcher.domain.model.EblanShortcutInfo
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemData
@@ -68,7 +68,7 @@ internal fun ShortcutInfoMenu(
     currentPage: Int,
     drag: Drag,
     icon: String?,
-    eblanShortcutInfosByPackageName: List<EblanShortcutInfo>,
+    eblanShortcutInfosGroup: List<EblanShortcutInfo>,
     gridItemSettings: GridItemSettings,
     onTapShortcutInfo: (
         serialNumber: Long,
@@ -94,7 +94,7 @@ internal fun ShortcutInfoMenu(
             )
             .verticalScroll(rememberScrollState()),
     ) {
-        eblanShortcutInfosByPackageName.forEach { eblanShortcutInfo ->
+        eblanShortcutInfosGroup.forEach { eblanShortcutInfo ->
             ShortcutInfoMenuItem(
                 currentPage = currentPage,
                 icon = icon,
@@ -140,19 +140,11 @@ private fun ShortcutInfoMenuItem(
 
     val scope = rememberCoroutineScope()
 
-    val scale = remember { Animatable(1f) }
-
     var isLongPress by remember { mutableStateOf(false) }
 
     LaunchedEffect(key1 = drag) {
         if (drag == Drag.End || drag == Drag.Cancel) {
             isLongPress = false
-
-            scale.stop()
-
-            if (scale.value < 1f) {
-                scale.animateTo(1f)
-            }
         }
     }
 
@@ -182,10 +174,6 @@ private fun ShortcutInfoMenuItem(
                         detectTapGestures(
                             onLongPress = {
                                 scope.launch {
-                                    scale.animateTo(0.5f)
-
-                                    scale.animateTo(1f)
-
                                     val id = Uuid.random().toHexString()
 
                                     val data = GridItemData.ShortcutInfo(
@@ -205,7 +193,6 @@ private fun ShortcutInfoMenuItem(
                                         GridItemSource.New(
                                             gridItem = GridItem(
                                                 id = id,
-                                                folderId = null,
                                                 page = currentPage,
                                                 startColumn = -1,
                                                 startRow = -1,
@@ -215,6 +202,21 @@ private fun ShortcutInfoMenuItem(
                                                 associate = Associate.Grid,
                                                 override = false,
                                                 gridItemSettings = gridItemSettings,
+                                                doubleTap = EblanAction(
+                                                    eblanActionType = EblanActionType.None,
+                                                    serialNumber = 0L,
+                                                    componentName = "",
+                                                ),
+                                                swipeUp = EblanAction(
+                                                    eblanActionType = EblanActionType.None,
+                                                    serialNumber = 0L,
+                                                    componentName = "",
+                                                ),
+                                                swipeDown = EblanAction(
+                                                    eblanActionType = EblanActionType.None,
+                                                    serialNumber = 0L,
+                                                    componentName = "",
+                                                ),
                                             ),
                                         ),
                                         graphicsLayer.toImageBitmap(),
@@ -237,23 +239,8 @@ private fun ShortcutInfoMenuItem(
                                     isLongPress = true
                                 }
                             },
-                            onPress = {
-                                awaitRelease()
-
-                                scale.stop()
-
-                                isLongPress = false
-
-                                if (scale.value < 1f) {
-                                    scale.animateTo(1f)
-                                }
-                            },
                         )
                     }
-                    .scale(
-                        scaleX = scale.value,
-                        scaleY = scale.value,
-                    )
                     .onGloballyPositioned { layoutCoordinates ->
                         intOffset =
                             layoutCoordinates.positionInRoot().round()

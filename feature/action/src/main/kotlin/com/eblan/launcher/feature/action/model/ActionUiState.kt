@@ -18,11 +18,12 @@
 package com.eblan.launcher.feature.action.model
 
 import com.eblan.launcher.domain.model.EblanApplicationInfo
+import com.eblan.launcher.domain.model.EblanUser
 
 sealed interface ActionUiState {
     data object Loading : ActionUiState
 
     data class Success(
-        val eblanApplicationInfos: List<EblanApplicationInfo>,
+        val eblanApplicationInfos: Map<EblanUser, List<EblanApplicationInfo>>,
     ) : ActionUiState
 }

@@ -74,7 +74,7 @@ class RemovePackageUseCase @Inject constructor(
                 packageName = packageName,
             )
 
-            eblanApplicationInfoRepository.deleteEblanApplicationInfo(
+            eblanApplicationInfoRepository.deleteEblanApplicationInfoByPackageName(
                 serialNumber = serialNumber,
                 packageName = packageName,
             )
@@ -117,49 +117,47 @@ class RemovePackageUseCase @Inject constructor(
         val iconPackInfoPackageName =
             userDataRepository.userData.first().generalSettings.iconPackInfoPackageName
 
-        val eblanApplicationInfo =
-            eblanApplicationInfoRepository.eblanApplicationInfos.first()
-                .find { eblanApplicationInfo ->
-                    currentCoroutineContext().ensureActive()
+        eblanApplicationInfoRepository.getEblanApplicationInfosByPackageName(
+            serialNumber = serialNumber,
+            packageName = packageName,
+        ).forEach { eblanApplicationInfoByPackageName ->
+            currentCoroutineContext().ensureActive()
 
-                    eblanApplicationInfo.packageName == packageName &&
-                        eblanApplicationInfo.serialNumber == serialNumber
-                }
-
-        val isUnique =
-            eblanApplicationInfoRepository.eblanApplicationInfos.first()
+            val isUniquePackageName = eblanApplicationInfoRepository.getEblanApplicationInfos()
                 .none { eblanApplicationInfo ->
                     currentCoroutineContext().ensureActive()
 
-                    eblanApplicationInfo.packageName == packageName &&
-                        eblanApplicationInfo.serialNumber != serialNumber
+                    eblanApplicationInfo.serialNumber != eblanApplicationInfoByPackageName.serialNumber && eblanApplicationInfo.packageName == eblanApplicationInfoByPackageName.packageName
                 }
 
-        if (eblanApplicationInfo != null && isUnique) {
-            eblanApplicationInfo.icon?.let { icon ->
-                val iconFile = File(icon)
+            if (isUniquePackageName) {
+                eblanApplicationInfoByPackageName.icon?.let { icon ->
+                    val iconFile = File(icon)
 
-                if (iconFile.exists()) {
-                    iconFile.delete()
+                    if (iconFile.exists()) {
+                        iconFile.delete()
+                    }
                 }
-            }
 
-            val iconPacksDirectory = File(
-                fileManager.getFilesDirectory(FileManager.ICON_PACKS_DIR),
-                iconPackInfoPackageName,
-            )
+                val iconPacksDirectory = File(
+                    fileManager.getFilesDirectory(FileManager.ICON_PACKS_DIR),
+                    iconPackInfoPackageName,
+                )
 
-            val iconPackFile = File(iconPacksDirectory, packageName)
+                val iconPackFile = File(iconPacksDirectory, packageName)
 
-            if (iconPackFile.exists()) {
-                iconPackFile.delete()
+                if (iconPackFile.exists()) {
+                    iconPackFile.delete()
+                }
             }
         }
 
-        applicationInfoGridItemRepository.getApplicationInfoGridItems(
+        applicationInfoGridItemRepository.getApplicationInfoGridItemsByPackageName(
             serialNumber = serialNumber,
             packageName = packageName,
         ).forEach { applicationInfoGridItem ->
+            currentCoroutineContext().ensureActive()
+
             applicationInfoGridItem.customIcon?.let { customIcon ->
                 val customIconFile = File(customIcon)
 
@@ -176,7 +174,7 @@ class RemovePackageUseCase @Inject constructor(
         ).forEach { eblanAppWidgetProviderInfo ->
             currentCoroutineContext().ensureActive()
 
-            eblanAppWidgetProviderInfo.icon?.let { icon ->
+            eblanAppWidgetProviderInfo.applicationIcon?.let { icon ->
                 val iconFile = File(icon)
 
                 if (iconFile.exists()) {
@@ -201,21 +199,18 @@ class RemovePackageUseCase @Inject constructor(
         eblanShortcutInfoRepository.getEblanShortcutInfos(
             serialNumber = serialNumber,
             packageName = packageName,
-        ).forEach { eblanShortcutInfo ->
+        ).forEach { eblanShortcutInfoByPackageName ->
             currentCoroutineContext().ensureActive()
 
-            val isUnique = eblanShortcutInfoRepository.getEblanShortcutInfos(
-                serialNumber = serialNumber,
-                packageName = packageName,
-            ).none { eblanShortcutInfo ->
-                currentCoroutineContext().ensureActive()
+            val isUniquePackageName =
+                eblanShortcutInfoRepository.getEblanShortcutInfos().none { eblanShortcutInfo ->
+                    currentCoroutineContext().ensureActive()
 
-                eblanShortcutInfo.packageName == packageName &&
-                    eblanShortcutInfo.serialNumber != serialNumber
-            }
+                    eblanShortcutInfo.serialNumber != eblanShortcutInfoByPackageName.serialNumber && eblanShortcutInfo.packageName == eblanShortcutInfoByPackageName.packageName
+                }
 
-            if (isUnique) {
-                eblanShortcutInfo.icon?.let { icon ->
+            if (isUniquePackageName) {
+                eblanShortcutInfoByPackageName.icon?.let { icon ->
                     val iconFile = File(icon)
 
                     if (iconFile.exists()) {
@@ -225,10 +220,12 @@ class RemovePackageUseCase @Inject constructor(
             }
         }
 
-        shortcutInfoGridItemRepository.getShortcutInfoGridItems(
+        shortcutInfoGridItemRepository.getShortcutInfoGridItemsByPackageName(
             serialNumber = serialNumber,
             packageName = packageName,
         ).forEach { shortcutInfoGridItem ->
+            currentCoroutineContext().ensureActive()
+
             shortcutInfoGridItem.customIcon?.let { customIcon ->
                 val customIconFile = File(customIcon)
 
@@ -243,24 +240,21 @@ class RemovePackageUseCase @Inject constructor(
         serialNumber: Long,
         packageName: String,
     ) {
-        eblanShortcutConfigRepository.getEblanShortcutConfig(
+        eblanShortcutConfigRepository.getEblanShortcutConfigsByPackageName(
             serialNumber = serialNumber,
             packageName = packageName,
-        ).forEach { eblanShortcutConfig ->
+        ).forEach { eblanShortcutConfigByPackageName ->
             currentCoroutineContext().ensureActive()
 
-            val isUnique = eblanShortcutConfigRepository.getEblanShortcutConfig(
-                serialNumber = serialNumber,
-                packageName = packageName,
-            ).none { eblanShortcutConfig ->
-                currentCoroutineContext().ensureActive()
+            val isUniquePackageName = eblanShortcutConfigRepository.getEblanShortcutConfigs()
+                .none { eblanShortcutConfig ->
+                    currentCoroutineContext().ensureActive()
 
-                eblanShortcutConfig.packageName == packageName &&
-                    eblanShortcutConfig.serialNumber != serialNumber
-            }
+                    eblanShortcutConfig.serialNumber != eblanShortcutConfigByPackageName.serialNumber && eblanShortcutConfig.packageName == eblanShortcutConfigByPackageName.packageName
+                }
 
-            if (isUnique) {
-                eblanShortcutConfig.activityIcon?.let { activityIcon ->
+            if (isUniquePackageName) {
+                eblanShortcutConfigByPackageName.activityIcon?.let { activityIcon ->
                     val activityIconFile = File(activityIcon)
 
                     if (activityIconFile.exists()) {
@@ -268,7 +262,7 @@ class RemovePackageUseCase @Inject constructor(
                     }
                 }
 
-                eblanShortcutConfig.applicationIcon?.let { applicationIcon ->
+                eblanShortcutConfigByPackageName.applicationIcon?.let { applicationIcon ->
                     val applicationIconFile = File(applicationIcon)
 
                     if (applicationIconFile.exists()) {
@@ -278,10 +272,12 @@ class RemovePackageUseCase @Inject constructor(
             }
         }
 
-        shortcutConfigGridItemRepository.getShortcutConfigGridItems(
+        shortcutConfigGridItemRepository.getShortcutConfigGridItemsByPackageName(
             serialNumber = serialNumber,
             packageName = packageName,
         ).forEach { shortcutConfigGridItem ->
+            currentCoroutineContext().ensureActive()
+
             shortcutConfigGridItem.shortcutIntentIcon?.let { shortcutIntentIcon ->
                 val shortcutIntentIconFile = File(shortcutIntentIcon)
 

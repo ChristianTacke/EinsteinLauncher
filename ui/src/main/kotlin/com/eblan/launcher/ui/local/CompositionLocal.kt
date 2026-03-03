@@ -18,8 +18,10 @@
 package com.eblan.launcher.ui.local
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import com.eblan.launcher.framework.bytearray.AndroidByteArrayWrapper
+import com.eblan.launcher.domain.framework.FileManager
+import com.eblan.launcher.framework.accessibilitymanager.AndroidAccessibilityManagerWrapper
 import com.eblan.launcher.framework.iconpackmanager.AndroidIconPackManager
+import com.eblan.launcher.framework.imageserializer.AndroidImageSerializer
 import com.eblan.launcher.framework.launcherapps.AndroidLauncherAppsWrapper
 import com.eblan.launcher.framework.launcherapps.PinItemRequestWrapper
 import com.eblan.launcher.framework.packagemanager.AndroidPackageManagerWrapper
@@ -53,8 +55,8 @@ val LocalPackageManager = staticCompositionLocalOf<AndroidPackageManagerWrapper>
     error("No AndroidPackageManager provided")
 }
 
-val LocalByteArray = staticCompositionLocalOf<AndroidByteArrayWrapper> {
-    error("No AndroidByteArrayWrapper provided")
+val LocalImageSerializer = staticCompositionLocalOf<AndroidImageSerializer> {
+    error("No ImageSerializer provided")
 }
 
 val LocalUserManager = staticCompositionLocalOf<AndroidUserManagerWrapper> {
@@ -67,4 +69,12 @@ val LocalSettings = staticCompositionLocalOf<AndroidSettingsWrapper> {
 
 val LocalIconPackManager = staticCompositionLocalOf<AndroidIconPackManager> {
     error("No AndroidIconPackManager provided")
+}
+
+val LocalFileManager = staticCompositionLocalOf<FileManager> {
+    error("No FileManager provided")
+}
+
+val LocalAccessibilityManager = staticCompositionLocalOf<AndroidAccessibilityManagerWrapper> {
+    error("No AndroidAccessibilityManagerWrapper provided")
 }

@@ -35,41 +35,36 @@ class GetIconPackFilePathsUseCase @Inject constructor(
     private val fileManager: FileManager,
     @param:Dispatcher(EblanDispatchers.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
-    operator fun invoke(): Flow<Map<String, String>> {
-        return combine(
-            userDataRepository.userData,
-            eblanApplicationInfoRepository.eblanApplicationInfos,
-        ) { userData, eblaApplicationInfos ->
-            val iconPacksDirectory = fileManager.getFilesDirectory(
-                FileManager.ICON_PACKS_DIR,
-            )
+    operator fun invoke(): Flow<Map<String, String>> = combine(
+        userDataRepository.userData,
+        eblanApplicationInfoRepository.eblanApplicationInfos,
+    ) { userData, eblaApplicationInfos ->
+        val iconPacksDirectory = fileManager.getFilesDirectory(
+            FileManager.ICON_PACKS_DIR,
+        )
 
-            val iconPackInfoPackageName = userData.generalSettings.iconPackInfoPackageName
+        val iconPackInfoPackageName = userData.generalSettings.iconPackInfoPackageName
 
+        if (iconPackInfoPackageName.isNotEmpty()) {
             val iconPackDirectory = File(
                 iconPacksDirectory,
                 iconPackInfoPackageName,
             )
 
-            if (iconPackInfoPackageName.isNotEmpty()) {
-                eblaApplicationInfos.mapNotNull { eblanApplicationInfo ->
+            buildMap {
+                eblaApplicationInfos.forEach { eblanApplicationInfo ->
                     val iconPackFile = File(
                         iconPackDirectory,
-                        eblanApplicationInfo.componentName.replace(
-                            "/",
-                            "-",
-                        ),
+                        fileManager.getHashedFileName(name = eblanApplicationInfo.componentName),
                     )
 
                     if (iconPackFile.exists()) {
-                        eblanApplicationInfo.componentName to iconPackFile.absolutePath
-                    } else {
-                        null
+                        put(eblanApplicationInfo.componentName, iconPackFile.absolutePath)
                     }
-                }.toMap()
-            } else {
-                emptyMap()
+                }
             }
-        }.flowOn(ioDispatcher)
-    }
+        } else {
+            emptyMap()
+        }
+    }.flowOn(ioDispatcher)
 }

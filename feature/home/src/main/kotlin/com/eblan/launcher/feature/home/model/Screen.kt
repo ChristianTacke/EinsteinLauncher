@@ -17,12 +17,15 @@
  */
 package com.eblan.launcher.feature.home.model
 
-internal enum class Screen {
+enum class Screen {
     Pager,
     Drag,
     Resize,
     Loading,
     EditPage,
+}
+
+enum class FolderScreen {
     Folder,
-    FolderDrag,
+    Drag,
 }

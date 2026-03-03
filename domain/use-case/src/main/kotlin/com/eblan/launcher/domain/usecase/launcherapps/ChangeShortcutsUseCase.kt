@@ -21,11 +21,15 @@ import com.eblan.launcher.domain.common.dispatcher.Dispatcher
 import com.eblan.launcher.domain.common.dispatcher.EblanDispatchers
 import com.eblan.launcher.domain.framework.FileManager
 import com.eblan.launcher.domain.framework.LauncherAppsWrapper
+import com.eblan.launcher.domain.framework.PackageManagerWrapper
+import com.eblan.launcher.domain.model.DeleteEblanShortcutInfo
 import com.eblan.launcher.domain.model.EblanShortcutInfo
 import com.eblan.launcher.domain.model.LauncherAppsShortcutInfo
 import com.eblan.launcher.domain.repository.EblanShortcutInfoRepository
+import com.eblan.launcher.domain.repository.ShortcutInfoGridItemRepository
 import com.eblan.launcher.domain.repository.UserDataRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -35,14 +39,13 @@ import javax.inject.Inject
 class ChangeShortcutsUseCase @Inject constructor(
     private val eblanShortcutInfoRepository: EblanShortcutInfoRepository,
     private val launcherAppsWrapper: LauncherAppsWrapper,
-    private val fileManager: FileManager,
     private val userDataRepository: UserDataRepository,
+    private val shortcutInfoGridItemRepository: ShortcutInfoGridItemRepository,
+    private val fileManager: FileManager,
+    private val packageManagerWrapper: PackageManagerWrapper,
     @param:Dispatcher(EblanDispatchers.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
-    suspend operator fun invoke(
-        packageName: String,
-        launcherAppsShortcutInfos: List<LauncherAppsShortcutInfo>,
-    ) {
+    suspend operator fun invoke(launcherAppsShortcutInfos: List<LauncherAppsShortcutInfo>) {
         if (!launcherAppsWrapper.hasShortcutHostPermission) {
             return
         }
@@ -55,49 +58,76 @@ class ChangeShortcutsUseCase @Inject constructor(
             val newEblanShortcutInfos = launcherAppsShortcutInfos.map { launcherAppsShortcutInfo ->
                 ensureActive()
 
-                val icon = launcherAppsShortcutInfo.icon?.let { byteArray ->
-                    fileManager.updateAndGetFilePath(
-                        directory = fileManager.getFilesDirectory(FileManager.SHORTCUTS_DIR),
-                        name = launcherAppsShortcutInfo.shortcutId,
-                        byteArray = byteArray,
-                    )
-                }
-
                 EblanShortcutInfo(
                     shortcutId = launcherAppsShortcutInfo.shortcutId,
                     serialNumber = launcherAppsShortcutInfo.serialNumber,
                     packageName = launcherAppsShortcutInfo.packageName,
                     shortLabel = launcherAppsShortcutInfo.shortLabel,
                     longLabel = launcherAppsShortcutInfo.longLabel,
-                    icon = icon,
+                    icon = launcherAppsShortcutInfo.icon,
                     shortcutQueryFlag = launcherAppsShortcutInfo.shortcutQueryFlag,
                     isEnabled = launcherAppsShortcutInfo.isEnabled,
+                    lastUpdateTime = launcherAppsShortcutInfo.lastUpdateTime,
                 )
             }
 
             if (oldEblanShortcutInfos != newEblanShortcutInfos) {
-                val eblanShortcutInfosToDelete =
-                    oldEblanShortcutInfos - newEblanShortcutInfos.toSet()
+                val newDeleteEblanShortcutInfos = newEblanShortcutInfos.map { eblanShortcutInfo ->
+                    DeleteEblanShortcutInfo(
+                        serialNumber = eblanShortcutInfo.serialNumber,
+                        shortcutId = eblanShortcutInfo.shortcutId,
+                        packageName = eblanShortcutInfo.packageName,
+                        icon = eblanShortcutInfo.icon,
+                    )
+                }.toSet()
+
+                val oldDeleteEblanShortcutInfos = oldEblanShortcutInfos.map { eblanShortcutInfo ->
+                    DeleteEblanShortcutInfo(
+                        serialNumber = eblanShortcutInfo.serialNumber,
+                        shortcutId = eblanShortcutInfo.shortcutId,
+                        packageName = eblanShortcutInfo.packageName,
+                        icon = eblanShortcutInfo.icon,
+                    )
+                }.filter { deleteEblanShortcutInfo ->
+                    deleteEblanShortcutInfo !in newDeleteEblanShortcutInfos
+                }
 
                 eblanShortcutInfoRepository.upsertEblanShortcutInfos(
                     eblanShortcutInfos = newEblanShortcutInfos,
                 )
 
                 eblanShortcutInfoRepository.deleteEblanShortcutInfos(
-                    eblanShortcutInfos = eblanShortcutInfosToDelete,
+                    deleteEblanShortcutInfos = oldDeleteEblanShortcutInfos,
                 )
 
-                eblanShortcutInfosToDelete.forEach { eblanShortcutInfo ->
-                    ensureActive()
+                oldDeleteEblanShortcutInfos.forEach { deleteEblanShortcutInfo ->
+                    currentCoroutineContext().ensureActive()
 
-                    eblanShortcutInfo.icon?.let { icon ->
-                        val iconFile = File(icon)
+                    val isUniqueShortcutId =
+                        eblanShortcutInfoRepository.getEblanShortcutInfos()
+                            .none { eblanShortcutInfo ->
+                                currentCoroutineContext().ensureActive()
 
-                        if (iconFile.exists()) {
-                            iconFile.delete()
+                                eblanShortcutInfo.serialNumber != deleteEblanShortcutInfo.serialNumber && eblanShortcutInfo.shortcutId == deleteEblanShortcutInfo.shortcutId
+                            }
+
+                    if (isUniqueShortcutId) {
+                        deleteEblanShortcutInfo.icon?.let { icon ->
+                            val iconFile = File(icon)
+
+                            if (iconFile.exists()) {
+                                iconFile.delete()
+                            }
                         }
                     }
                 }
+
+                updateShortcutInfoGridItems(
+                    eblanShortcutInfos = eblanShortcutInfoRepository.getEblanShortcutInfos(),
+                    shortcutInfoGridItemRepository = shortcutInfoGridItemRepository,
+                    fileManager = fileManager,
+                    packageManagerWrapper = packageManagerWrapper,
+                )
             }
         }
     }

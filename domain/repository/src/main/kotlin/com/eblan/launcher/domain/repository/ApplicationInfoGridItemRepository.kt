@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.Flow
 interface ApplicationInfoGridItemRepository {
     val gridItems: Flow<List<GridItem>>
 
+    val gridItemsWithFolderId: Flow<List<GridItem>>
+
     val applicationInfoGridItems: Flow<List<ApplicationInfoGridItem>>
 
     suspend fun upsertApplicationInfoGridItems(applicationInfoGridItems: List<ApplicationInfoGridItem>)
@@ -35,7 +37,7 @@ interface ApplicationInfoGridItemRepository {
 
     suspend fun deleteApplicationInfoGridItem(applicationInfoGridItem: ApplicationInfoGridItem)
 
-    suspend fun getApplicationInfoGridItems(
+    suspend fun getApplicationInfoGridItemsByPackageName(
         serialNumber: Long,
         packageName: String,
     ): List<ApplicationInfoGridItem>
@@ -48,4 +50,6 @@ interface ApplicationInfoGridItemRepository {
     suspend fun updateApplicationInfoGridItems(updateApplicationInfoGridItems: List<UpdateApplicationInfoGridItem>)
 
     suspend fun insertApplicationInfoGridItem(applicationInfoGridItem: ApplicationInfoGridItem)
+
+    suspend fun deleteApplicationInfoGridItemById(id: String)
 }

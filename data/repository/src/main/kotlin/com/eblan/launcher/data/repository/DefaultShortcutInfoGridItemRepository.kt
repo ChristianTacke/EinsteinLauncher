@@ -28,8 +28,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-internal class DefaultShortcutInfoGridItemRepository @Inject constructor(private val shortcutInfoGridItemDao: ShortcutInfoGridItemDao) :
-    ShortcutInfoGridItemRepository {
+internal class DefaultShortcutInfoGridItemRepository @Inject constructor(private val shortcutInfoGridItemDao: ShortcutInfoGridItemDao) : ShortcutInfoGridItemRepository {
     override val gridItems =
         shortcutInfoGridItemDao.getShortcutInfoGridItemEntities().map { entities ->
             entities.map { entity ->
@@ -70,16 +69,14 @@ internal class DefaultShortcutInfoGridItemRepository @Inject constructor(private
         shortcutInfoGridItemDao.deleteShortcutInfoGridItemEntity(entity = shortcutInfoGridItem.asEntity())
     }
 
-    override suspend fun getShortcutInfoGridItems(
+    override suspend fun getShortcutInfoGridItemsByPackageName(
         serialNumber: Long,
         packageName: String,
-    ): List<ShortcutInfoGridItem> {
-        return shortcutInfoGridItemDao.getShortcutInfoGridItemEntities(
-            serialNumber = serialNumber,
-            packageName = packageName,
-        ).map { entity ->
-            entity.asModel()
-        }
+    ): List<ShortcutInfoGridItem> = shortcutInfoGridItemDao.getShortcutInfoGridItemEntitiesByPackageName(
+        serialNumber = serialNumber,
+        packageName = packageName,
+    ).map { entity ->
+        entity.asModel()
     }
 
     override suspend fun deleteShortcutInfoGridItem(

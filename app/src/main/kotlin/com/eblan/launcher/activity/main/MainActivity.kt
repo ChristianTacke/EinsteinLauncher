@@ -26,12 +26,16 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.eblan.launcher.activity.settings.SettingsActivity
 import com.eblan.launcher.designsystem.theme.EblanLauncherTheme
-import com.eblan.launcher.framework.bytearray.AndroidByteArrayWrapper
+import com.eblan.launcher.domain.framework.FileManager
+import com.eblan.launcher.framework.accessibilitymanager.AndroidAccessibilityManagerWrapper
 import com.eblan.launcher.framework.iconpackmanager.AndroidIconPackManager
+import com.eblan.launcher.framework.imageserializer.AndroidImageSerializer
 import com.eblan.launcher.framework.launcherapps.AndroidLauncherAppsWrapper
 import com.eblan.launcher.framework.launcherapps.PinItemRequestWrapper
 import com.eblan.launcher.framework.packagemanager.AndroidPackageManagerWrapper
@@ -42,10 +46,12 @@ import com.eblan.launcher.framework.widgetmanager.AndroidAppWidgetHostWrapper
 import com.eblan.launcher.framework.widgetmanager.AndroidAppWidgetManagerWrapper
 import com.eblan.launcher.model.ActivityUiState
 import com.eblan.launcher.navigation.MainNavHost
+import com.eblan.launcher.ui.local.LocalAccessibilityManager
 import com.eblan.launcher.ui.local.LocalAppWidgetHost
 import com.eblan.launcher.ui.local.LocalAppWidgetManager
-import com.eblan.launcher.ui.local.LocalByteArray
+import com.eblan.launcher.ui.local.LocalFileManager
 import com.eblan.launcher.ui.local.LocalIconPackManager
+import com.eblan.launcher.ui.local.LocalImageSerializer
 import com.eblan.launcher.ui.local.LocalLauncherApps
 import com.eblan.launcher.ui.local.LocalPackageManager
 import com.eblan.launcher.ui.local.LocalPinItemRequest
@@ -77,7 +83,7 @@ class MainActivity : ComponentActivity() {
     lateinit var androidPackageManagerWrapper: AndroidPackageManagerWrapper
 
     @Inject
-    lateinit var androidByteArrayWrapper: AndroidByteArrayWrapper
+    lateinit var imageSerializer: AndroidImageSerializer
 
     @Inject
     lateinit var androidUserManagerWrapper: AndroidUserManagerWrapper
@@ -88,7 +94,15 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var androidIconPackManager: AndroidIconPackManager
 
+    @Inject
+    lateinit var fileManager: FileManager
+
+    @Inject
+    lateinit var androidAccessibilityManagerWrapper: AndroidAccessibilityManagerWrapper
+
     private val viewModel: MainActivityViewModel by viewModels()
+
+    private var configureResultCode by mutableStateOf<Int?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,10 +115,12 @@ class MainActivity : ComponentActivity() {
                 LocalPinItemRequest provides pinItemRequestWrapper,
                 LocalWallpaperManager provides androidWallpaperManagerWrapper,
                 LocalPackageManager provides androidPackageManagerWrapper,
-                LocalByteArray provides androidByteArrayWrapper,
+                LocalImageSerializer provides imageSerializer,
                 LocalUserManager provides androidUserManagerWrapper,
                 LocalSettings provides androidSettingsWrapper,
                 LocalIconPackManager provides androidIconPackManager,
+                LocalFileManager provides fileManager,
+                LocalAccessibilityManager provides androidAccessibilityManagerWrapper,
             ) {
                 val navController = rememberNavController()
 
@@ -126,16 +142,29 @@ class MainActivity : ComponentActivity() {
                         ) {
                             MainNavHost(
                                 navController = navController,
+                                configureResultCode = configureResultCode,
                                 onSettings = {
                                     startActivity(Intent(this, SettingsActivity::class.java))
 
                                     finish()
+                                },
+                                onResetConfigureResultCode = {
+                                    configureResultCode = null
                                 },
                             )
                         }
                     }
                 }
             }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    @Deprecated("This method has been deprecated in favor of using the Activity Result API\n      which brings increased type safety via an {@link ActivityResultContract} and the prebuilt\n      contracts for common intents available in\n      {@link androidx.activity.result.contract.ActivityResultContracts}, provides hooks for\n      testing, and allow receiving results in separate, testable classes independent from your\n      activity. Use\n      {@link #registerForActivityResult(ActivityResultContract, ActivityResultCallback)}\n      with the appropriate {@link ActivityResultContract} and handling the result in the\n      {@link ActivityResultCallback#onActivityResult(Object) callback}.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == AndroidAppWidgetHostWrapper.CONFIGURE_REQUEST_CODE) {
+            configureResultCode = resultCode
         }
     }
 }

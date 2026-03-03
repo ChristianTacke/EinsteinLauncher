@@ -19,6 +19,7 @@ package com.eblan.launcher.data.room.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
+import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
@@ -32,11 +33,11 @@ interface FolderGridItemDao {
 
     @Transaction
     @Query("SELECT * FROM FolderGridItemEntity")
-    fun getFolderGridItemWrapperEntities(): Flow<List<FolderGridItemWrapperEntity>>
+    fun getFolderGridItemWrappers(): Flow<List<FolderGridItemWrapperEntity>>
 
     @Transaction
     @Query("SELECT * FROM FolderGridItemEntity WHERE id = :id")
-    suspend fun getFolderGridItemWrapperEntity(id: String): FolderGridItemWrapperEntity?
+    suspend fun getFolderGridItemWrapper(id: String): FolderGridItemWrapperEntity?
 
     @Upsert
     suspend fun upsertFolderGridItemEntities(entities: List<FolderGridItemEntity>)
@@ -49,4 +50,7 @@ interface FolderGridItemDao {
 
     @Delete
     suspend fun deleteFolderGridItemEntities(entities: List<FolderGridItemEntity>)
+
+    @Insert
+    suspend fun insertFolderGridItemEntity(entity: FolderGridItemEntity)
 }

@@ -26,11 +26,15 @@ android {
 
     defaultConfig {
         applicationId = "com.eblan.launcher"
-        versionCode = 33
-        versionName = "0.3.3-alpha"
+        versionCode = 46
+        versionName = "0.4.6-alpha"
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -57,18 +61,18 @@ dependencies {
     implementation(projects.feature.pin)
     implementation(projects.feature.settings.appDrawer)
     implementation(projects.feature.settings.experimental)
-    implementation(projects.feature.settings.folder)
     implementation(projects.feature.settings.general)
     implementation(projects.feature.settings.gestures)
     implementation(projects.feature.settings.home)
     implementation(projects.feature.settings.settings)
-    implementation(projects.framework.byteArray)
+    implementation(projects.framework.accessibilityManager)
     implementation(projects.framework.fileManager)
     implementation(projects.framework.iconPackManager)
+    implementation(projects.framework.imageSerializer)
     implementation(projects.framework.launcherApps)
-    implementation(projects.framework.resources)
     implementation(projects.framework.notificationManager)
     implementation(projects.framework.packageManager)
+    implementation(projects.framework.resources)
     implementation(projects.framework.settings)
     implementation(projects.framework.userManager)
     implementation(projects.framework.wallpaperManager)

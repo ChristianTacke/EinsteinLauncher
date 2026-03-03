@@ -25,4 +25,7 @@ data class EblanApplicationInfo(
     val label: String,
     val customIcon: String?,
     val customLabel: String?,
+    val isHidden: Boolean,
+    val lastUpdateTime: Long,
+    val index: Int,
 )

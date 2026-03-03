@@ -21,17 +21,23 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import com.eblan.launcher.domain.framework.FileManager
+import com.eblan.launcher.domain.common.dispatcher.Dispatcher
+import com.eblan.launcher.domain.common.dispatcher.EblanDispatchers
 import com.eblan.launcher.domain.framework.IconPackManager
 import com.eblan.launcher.domain.framework.PackageManagerWrapper
 import com.eblan.launcher.domain.model.EblanApplicationInfo
+import com.eblan.launcher.domain.model.EblanApplicationInfoTag
+import com.eblan.launcher.domain.model.EblanApplicationInfoTagCrossRef
 import com.eblan.launcher.domain.model.IconPackInfoComponent
 import com.eblan.launcher.domain.model.PackageManagerIconPackInfo
 import com.eblan.launcher.domain.repository.EblanApplicationInfoRepository
-import com.eblan.launcher.domain.usecase.applicationcomponent.RestoreEblanApplicationInfoUseCase
+import com.eblan.launcher.domain.repository.EblanApplicationInfoTagCrossRefRepository
+import com.eblan.launcher.domain.repository.EblanApplicationInfoTagRepository
+import com.eblan.launcher.domain.usecase.application.GetEblanApplicationInfoTagUseCase
 import com.eblan.launcher.feature.editapplicationinfo.model.EditApplicationInfoUiState
 import com.eblan.launcher.feature.editapplicationinfo.navigation.EditApplicationInfoRouteData
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,10 +52,12 @@ import javax.inject.Inject
 internal class EditApplicationInfoViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val eblanApplicationInfoRepository: EblanApplicationInfoRepository,
-    private val iconPackManager: IconPackManager,
     packageManagerWrapper: PackageManagerWrapper,
-    private val fileManager: FileManager,
-    private val restoreEblanApplicationInfoUseCase: RestoreEblanApplicationInfoUseCase,
+    private val iconPackManager: IconPackManager,
+    getEblanApplicationInfoTagUseCase: GetEblanApplicationInfoTagUseCase,
+    private val eblanApplicationInfoTagRepository: EblanApplicationInfoTagRepository,
+    private val eblanApplicationInfoTagCrossRefRepository: EblanApplicationInfoTagCrossRefRepository,
+    @param:Dispatcher(EblanDispatchers.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val editApplicationInfoRouteData =
         savedStateHandle.toRoute<EditApplicationInfoRouteData>()
@@ -84,20 +92,33 @@ internal class EditApplicationInfoViewModel @Inject constructor(
 
     private var iconPackInfoComponentsJob: Job? = null
 
+    private var lastIconPackInfoComponents = emptyList<IconPackInfoComponent>()
+
+    val eblanApplicationInfoTagsUi = getEblanApplicationInfoTagUseCase(
+        serialNumber = editApplicationInfoRouteData.serialNumber,
+        componentName = editApplicationInfoRouteData.componentName,
+    ).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
     fun updateEblanApplicationInfo(eblanApplicationInfo: EblanApplicationInfo) {
         viewModelScope.launch {
-            eblanApplicationInfoRepository.upsertEblanApplicationInfo(eblanApplicationInfo = eblanApplicationInfo)
+            eblanApplicationInfoRepository.updateEblanApplicationInfo(eblanApplicationInfo = eblanApplicationInfo)
 
             getApplicationInfo()
         }
     }
 
     fun updateIconPackInfoPackageName(packageName: String) {
-        iconPackInfoComponentsJob = viewModelScope.launch {
+        iconPackInfoComponentsJob = viewModelScope.launch(defaultDispatcher) {
             _iconPackInfoComponents.update {
-                iconPackManager.parseAppFilter(packageName = packageName)
+                iconPackManager.getIconPackInfoComponents(packageName = packageName)
                     .distinctBy { iconPackInfoComponent ->
-                        iconPackInfoComponent.drawable
+                        iconPackInfoComponent.drawableName
+                    }.also { iconPackInfoComponents ->
+                        lastIconPackInfoComponents = iconPackInfoComponents
                     }
             }
         }
@@ -109,19 +130,15 @@ internal class EditApplicationInfoViewModel @Inject constructor(
         _iconPackInfoComponents.update {
             emptyList()
         }
+
+        lastIconPackInfoComponents = emptyList()
     }
 
     fun updateEblanApplicationInfoCustomIcon(
-        byteArray: ByteArray,
+        customIcon: String?,
         eblanApplicationInfo: EblanApplicationInfo,
     ) {
         viewModelScope.launch {
-            val customIcon = fileManager.updateAndGetFilePath(
-                directory = fileManager.getFilesDirectory(FileManager.CUSTOM_ICONS_DIR),
-                name = eblanApplicationInfo.packageName,
-                byteArray = byteArray,
-            )
-
             updateEblanApplicationInfo(
                 eblanApplicationInfo = eblanApplicationInfo.copy(
                     customIcon = customIcon,
@@ -132,10 +149,63 @@ internal class EditApplicationInfoViewModel @Inject constructor(
 
     fun restoreEblanApplicationInfo(eblanApplicationInfo: EblanApplicationInfo) {
         viewModelScope.launch {
-            updateEblanApplicationInfo(
-                eblanApplicationInfo = restoreEblanApplicationInfoUseCase(
-                    eblanApplicationInfo = eblanApplicationInfo,
+            eblanApplicationInfoRepository.restoreEblanApplicationInfo(
+                eblanApplicationInfo = eblanApplicationInfo,
+            )
+
+            getApplicationInfo()
+        }
+    }
+
+    fun searchIconPackInfoComponent(component: String) {
+        viewModelScope.launch(defaultDispatcher) {
+            _iconPackInfoComponents.update {
+                lastIconPackInfoComponents.filter { iconPackInfoComponent ->
+                    iconPackInfoComponent.componentName.contains(
+                        other = component,
+                        ignoreCase = true,
+                    )
+                }
+            }
+        }
+    }
+
+    fun addEblanApplicationInfoTag(eblanApplicationInfoTag: EblanApplicationInfoTag) {
+        viewModelScope.launch {
+            eblanApplicationInfoTagRepository.insertEblanApplicationInfoTag(eblanApplicationInfoTag = eblanApplicationInfoTag)
+        }
+    }
+
+    fun updateEblanApplicationInfoTag(eblanApplicationInfoTag: EblanApplicationInfoTag) {
+        viewModelScope.launch {
+            eblanApplicationInfoTagRepository.updateEblanApplicationInfoTag(eblanApplicationInfoTag = eblanApplicationInfoTag)
+        }
+    }
+
+    fun deleteEblanApplicationInfoTag(eblanApplicationInfoTag: EblanApplicationInfoTag) {
+        viewModelScope.launch {
+            eblanApplicationInfoTagRepository.deleteEblanApplicationInfoTag(eblanApplicationInfoTag = eblanApplicationInfoTag)
+        }
+    }
+
+    fun addEblanApplicationInfoTagCrossRef(id: Long) {
+        viewModelScope.launch {
+            eblanApplicationInfoTagCrossRefRepository.insertEblanApplicationInfoTagCrossRef(
+                eblanApplicationInfoTagCrossRef = EblanApplicationInfoTagCrossRef(
+                    componentName = editApplicationInfoRouteData.componentName,
+                    serialNumber = editApplicationInfoRouteData.serialNumber,
+                    id = id,
                 ),
+            )
+        }
+    }
+
+    fun deleteEblanApplicationInfoTagCrossRef(id: Long) {
+        viewModelScope.launch {
+            eblanApplicationInfoTagCrossRefRepository.deleteEblanApplicationInfoTagCrossRef(
+                componentName = editApplicationInfoRouteData.componentName,
+                serialNumber = editApplicationInfoRouteData.serialNumber,
+                tagId = id,
             )
         }
     }
@@ -144,9 +214,9 @@ internal class EditApplicationInfoViewModel @Inject constructor(
         viewModelScope.launch {
             _editApplicationInfoUiState.update {
                 EditApplicationInfoUiState.Success(
-                    eblanApplicationInfo = eblanApplicationInfoRepository.getEblanApplicationInfo(
+                    eblanApplicationInfo = eblanApplicationInfoRepository.getEblanApplicationInfoByComponentName(
                         serialNumber = editApplicationInfoRouteData.serialNumber,
-                        packageName = editApplicationInfoRouteData.packageName,
+                        componentName = editApplicationInfoRouteData.componentName,
                     ),
                 )
             }

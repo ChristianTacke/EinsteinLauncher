@@ -18,14 +18,17 @@
 package com.eblan.launcher.feature.home
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ClipDescription
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.UserHandle
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedContent
@@ -35,7 +38,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -49,9 +52,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
@@ -61,6 +66,7 @@ import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
@@ -68,19 +74,25 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.eblan.launcher.domain.model.AppDrawerSettings
+import com.eblan.launcher.domain.model.ApplicationInfoGridItem
+import com.eblan.launcher.domain.model.Associate
 import com.eblan.launcher.domain.model.EblanAppWidgetProviderInfo
 import com.eblan.launcher.domain.model.EblanApplicationInfo
 import com.eblan.launcher.domain.model.EblanApplicationInfoGroup
+import com.eblan.launcher.domain.model.EblanApplicationInfoTag
 import com.eblan.launcher.domain.model.EblanShortcutConfig
 import com.eblan.launcher.domain.model.EblanShortcutInfo
 import com.eblan.launcher.domain.model.EblanShortcutInfoByGroup
-import com.eblan.launcher.domain.model.FolderDataById
+import com.eblan.launcher.domain.model.EblanUser
+import com.eblan.launcher.domain.model.GetEblanApplicationInfosByLabel
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemCache
 import com.eblan.launcher.domain.model.GridItemData
@@ -90,23 +102,22 @@ import com.eblan.launcher.domain.model.MoveGridItemResult
 import com.eblan.launcher.domain.model.PageItem
 import com.eblan.launcher.domain.model.PinItemRequestType
 import com.eblan.launcher.feature.home.model.Drag
-import com.eblan.launcher.feature.home.model.EblanApplicationComponentUiState
 import com.eblan.launcher.feature.home.model.GridItemSource
 import com.eblan.launcher.feature.home.model.HomeUiState
 import com.eblan.launcher.feature.home.model.Screen
 import com.eblan.launcher.feature.home.model.SharedElementKey
 import com.eblan.launcher.feature.home.screen.drag.DragScreen
 import com.eblan.launcher.feature.home.screen.editpage.EditPageScreen
-import com.eblan.launcher.feature.home.screen.folder.FolderScreen
-import com.eblan.launcher.feature.home.screen.folderdrag.FolderDragScreen
 import com.eblan.launcher.feature.home.screen.loading.LoadingScreen
 import com.eblan.launcher.feature.home.screen.pager.PagerScreen
 import com.eblan.launcher.feature.home.screen.resize.ResizeScreen
 import com.eblan.launcher.feature.home.util.calculatePage
+import com.eblan.launcher.framework.usermanager.AndroidUserManagerWrapper
 import com.eblan.launcher.service.EblanNotificationListenerService
 import com.eblan.launcher.ui.dialog.TextDialog
 import com.eblan.launcher.ui.local.LocalAppWidgetHost
-import com.eblan.launcher.ui.local.LocalByteArray
+import com.eblan.launcher.ui.local.LocalFileManager
+import com.eblan.launcher.ui.local.LocalImageSerializer
 import com.eblan.launcher.ui.local.LocalLauncherApps
 import com.eblan.launcher.ui.local.LocalPinItemRequest
 import com.eblan.launcher.ui.local.LocalUserManager
@@ -120,88 +131,98 @@ import kotlin.math.roundToInt
 internal fun HomeRoute(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
+    configureResultCode: Int?,
     onEditGridItem: (String) -> Unit,
     onSettings: () -> Unit,
     onEditApplicationInfo: (
         serialNumber: Long,
-        packageName: String,
+        componentName: String,
     ) -> Unit,
+    onResetConfigureResultCode: () -> Unit,
 ) {
     val homeUiState by viewModel.homeUiState.collectAsStateWithLifecycle()
 
     val screen by viewModel.screen.collectAsStateWithLifecycle()
 
-    val eblanApplicationComponentUiState by viewModel.eblanApplicationComponentUiState.collectAsStateWithLifecycle()
-
     val movedGridItemResult by viewModel.movedGridItemResult.collectAsStateWithLifecycle()
 
     val pageItems by viewModel.pageItems.collectAsStateWithLifecycle()
-
-    val folders by viewModel.foldersDataById.collectAsStateWithLifecycle()
-
-    val eblanApplicationInfosByLabel by viewModel.eblanApplicationInfosByLabel.collectAsStateWithLifecycle()
-
-    val eblanAppWidgetProviderInfosByLabel by viewModel.eblanAppWidgetProviderInfosByLabel.collectAsStateWithLifecycle()
 
     val gridItemsCache by viewModel.gridItemsCache.collectAsStateWithLifecycle()
 
     val pinGridItem by viewModel.pinGridItem.collectAsStateWithLifecycle()
 
-    val eblanShortcutInfos by viewModel.eblanShortcutInfos.collectAsStateWithLifecycle()
+    val getEblanApplicationInfos by viewModel.getEblanApplicationInfosByLabel.collectAsStateWithLifecycle()
 
-    val eblanShortcutConfigsByLabel by viewModel.eblanShortcutConfigsByLabel.collectAsStateWithLifecycle()
+    val eblanShortcutConfigs by viewModel.eblanShortcutConfigs.collectAsStateWithLifecycle()
 
     val eblanAppWidgetProviderInfos by viewModel.eblanAppWidgetProviderInfos.collectAsStateWithLifecycle()
 
+    val eblanShortcutInfosGroup by viewModel.eblanShortcutInfosGroup.collectAsStateWithLifecycle()
+
+    val eblanAppWidgetProviderInfosGroup by viewModel.eblanAppWidgetProviderInfosGroup.collectAsStateWithLifecycle()
+
     val iconPackFilePaths by viewModel.iconPackFilePaths.collectAsStateWithLifecycle()
+
+    val eblanApplicationInfoTags by viewModel.eblanApplicationInfoTags.collectAsStateWithLifecycle()
+
+    val folderGridItem by viewModel.folderGridItem.collectAsStateWithLifecycle()
+
+    val folderGridItemCache by viewModel.folderGridItemCache.collectAsStateWithLifecycle()
 
     HomeScreen(
         modifier = modifier,
         screen = screen,
         homeUiState = homeUiState,
-        eblanApplicationComponentUiState = eblanApplicationComponentUiState,
         movedGridItemResult = movedGridItemResult,
         pageItems = pageItems,
-        foldersDataById = folders,
-        eblanApplicationInfosByLabel = eblanApplicationInfosByLabel,
-        eblanAppWidgetProviderInfosByLabel = eblanAppWidgetProviderInfosByLabel,
         gridItemsCache = gridItemsCache,
         pinGridItem = pinGridItem,
-        eblanShortcutInfos = eblanShortcutInfos,
-        eblanShortcutConfigsByLabel = eblanShortcutConfigsByLabel,
-        eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
+        eblanShortcutInfosGroup = eblanShortcutInfosGroup,
+        eblanAppWidgetProviderInfosGroup = eblanAppWidgetProviderInfosGroup,
         iconPackFilePaths = iconPackFilePaths,
+        getEblanApplicationInfosByLabel = getEblanApplicationInfos,
+        eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
+        eblanShortcutConfigs = eblanShortcutConfigs,
+        eblanApplicationInfoTags = eblanApplicationInfoTags,
+        configureResultCode = configureResultCode,
+        folderGridItem = folderGridItem,
+        folderGridItemCache = folderGridItemCache,
         onMoveGridItem = viewModel::moveGridItem,
-        onMoveFolderGridItem = viewModel::moveFolderGridItem,
         onResizeGridItem = viewModel::resizeGridItem,
         onShowGridCache = viewModel::showGridCache,
-        onShowFolderGridCache = viewModel::showFolderGridCache,
         onResetGridCacheAfterResize = viewModel::resetGridCacheAfterResize,
         onResetGridCacheAfterMove = viewModel::resetGridCacheAfterMove,
-        onResetGridCacheAfterMoveFolder = viewModel::resetGridCacheAfterMoveFolder,
+        onResetGridCacheAfterMoveWidgetGridItem = viewModel::resetGridCacheAfterMoveWidgetGridItem,
         onCancelGridCache = viewModel::cancelGridCache,
-        onCancelFolderDragGridCache = viewModel::cancelFolderDragGridCache,
         onEditGridItem = onEditGridItem,
         onSettings = onSettings,
         onEditPage = viewModel::showPageCache,
         onSaveEditPage = viewModel::saveEditPage,
         onUpdateScreen = viewModel::updateScreen,
         onDeleteGridItemCache = viewModel::deleteGridItemCache,
-        onUpdateGridItemDataCache = viewModel::updateGridItemDataCache,
         onDeleteWidgetGridItemCache = viewModel::deleteWidgetGridItemCache,
-        onShowFolder = viewModel::showFolder,
-        onRemoveLastFolder = viewModel::removeLastFolder,
-        onAddFolder = viewModel::addFolder,
         onGetEblanApplicationInfosByLabel = viewModel::getEblanApplicationInfosByLabel,
         onGetEblanAppWidgetProviderInfosByLabel = viewModel::getEblanAppWidgetProviderInfosByLabel,
         onGetEblanShortcutConfigsByLabel = viewModel::getEblanShortcutConfigsByLabel,
         onDeleteGridItem = viewModel::deleteGridItem,
+        onDeleteApplicationInfoGridItem = viewModel::deleteApplicationInfoGridItem,
         onGetPinGridItem = viewModel::getPinGridItem,
         onResetPinGridItem = viewModel::resetPinGridItem,
         onUpdateShortcutConfigGridItemDataCache = viewModel::updateShortcutConfigGridItemDataCache,
         onUpdateShortcutConfigIntoShortcutInfoGridItem = viewModel::updateShortcutConfigIntoShortcutInfoGridItem,
         onEditApplicationInfo = onEditApplicationInfo,
-        onMoveGridItemOutsideFolder = viewModel::moveGridItemOutsideFolder,
+        onGetEblanApplicationInfosByTagIds = viewModel::getEblanApplicationInfosByTagId,
+        onResetConfigureResultCode = onResetConfigureResultCode,
+        onStartSyncData = viewModel::startSyncData,
+        onStopSyncData = viewModel::stopSyncData,
+        onUpdateAppDrawerSettings = viewModel::updateAppDrawerSettings,
+        onUpdateEblanApplicationInfos = viewModel::updateEblanApplicationInfos,
+        onUpdateFolderGridItemId = viewModel::updateFolderGridItemId,
+        onMoveFolderGridItem = viewModel::moveFolderGridItem,
+        onResetGridCacheAfterMoveFolder = viewModel::resetGridCacheAfterMoveFolder,
+        onMoveFolderGridItemOutsideFolder = viewModel::moveFolderGridItemOutsideFolder,
+        onShowFolderWhenDragging = viewModel::showFolderWhenDragging,
     )
 }
 
@@ -211,29 +232,21 @@ internal fun HomeScreen(
     modifier: Modifier = Modifier,
     screen: Screen,
     homeUiState: HomeUiState,
-    eblanApplicationComponentUiState: EblanApplicationComponentUiState,
     movedGridItemResult: MoveGridItemResult?,
     pageItems: List<PageItem>,
-    foldersDataById: ArrayDeque<FolderDataById>,
-    eblanApplicationInfosByLabel: List<EblanApplicationInfo>,
-    eblanAppWidgetProviderInfosByLabel: Map<EblanApplicationInfoGroup, List<EblanAppWidgetProviderInfo>>,
     gridItemsCache: GridItemCache,
     pinGridItem: GridItem?,
-    eblanShortcutInfos: Map<EblanShortcutInfoByGroup, List<EblanShortcutInfo>>,
-    eblanShortcutConfigsByLabel: Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>,
-    eblanAppWidgetProviderInfos: Map<String, List<EblanAppWidgetProviderInfo>>,
+    eblanShortcutInfosGroup: Map<EblanShortcutInfoByGroup, List<EblanShortcutInfo>>,
+    eblanAppWidgetProviderInfosGroup: Map<String, List<EblanAppWidgetProviderInfo>>,
     iconPackFilePaths: Map<String, String>,
+    getEblanApplicationInfosByLabel: GetEblanApplicationInfosByLabel,
+    eblanAppWidgetProviderInfos: Map<EblanApplicationInfoGroup, List<EblanAppWidgetProviderInfo>>,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    eblanApplicationInfoTags: List<EblanApplicationInfoTag>,
+    configureResultCode: Int?,
+    folderGridItem: GridItem?,
+    folderGridItemCache: GridItem?,
     onMoveGridItem: (
-        movingGridItem: GridItem,
-        x: Int,
-        y: Int,
-        columns: Int,
-        rows: Int,
-        gridWidth: Int,
-        gridHeight: Int,
-        lockMovement: Boolean,
-    ) -> Unit,
-    onMoveFolderGridItem: (
         movingGridItem: GridItem,
         x: Int,
         y: Int,
@@ -250,40 +263,36 @@ internal fun HomeScreen(
         lockMovement: Boolean,
     ) -> Unit,
     onShowGridCache: (
-        gridItems: List<GridItem>,
         screen: Screen,
-    ) -> Unit,
-    onShowFolderGridCache: (
         gridItems: List<GridItem>,
-        screen: Screen,
     ) -> Unit,
     onResetGridCacheAfterResize: (GridItem) -> Unit,
     onResetGridCacheAfterMove: (MoveGridItemResult) -> Unit,
-    onResetGridCacheAfterMoveFolder: () -> Unit,
+    onResetGridCacheAfterMoveWidgetGridItem: (MoveGridItemResult) -> Unit,
     onCancelGridCache: () -> Unit,
-    onCancelFolderDragGridCache: () -> Unit,
     onEditGridItem: (String) -> Unit,
     onSettings: () -> Unit,
-    onEditPage: (List<GridItem>) -> Unit,
+    onEditPage: (
+        gridItems: List<GridItem>,
+        associate: Associate,
+    ) -> Unit,
     onSaveEditPage: (
         id: Int,
         pageItems: List<PageItem>,
         pageItemsToDelete: List<PageItem>,
+        associate: Associate,
     ) -> Unit,
     onUpdateScreen: (Screen) -> Unit,
     onDeleteGridItemCache: (GridItem) -> Unit,
-    onUpdateGridItemDataCache: (GridItem) -> Unit,
     onDeleteWidgetGridItemCache: (
         gridItem: GridItem,
         appWidgetId: Int,
     ) -> Unit,
-    onShowFolder: (String) -> Unit,
-    onRemoveLastFolder: () -> Unit,
-    onAddFolder: (String) -> Unit,
     onGetEblanApplicationInfosByLabel: (String) -> Unit,
     onGetEblanAppWidgetProviderInfosByLabel: (String) -> Unit,
     onGetEblanShortcutConfigsByLabel: (String) -> Unit,
     onDeleteGridItem: (GridItem) -> Unit,
+    onDeleteApplicationInfoGridItem: (ApplicationInfoGridItem) -> Unit,
     onGetPinGridItem: (PinItemRequestType) -> Unit,
     onResetPinGridItem: () -> Unit,
     onUpdateShortcutConfigGridItemDataCache: (
@@ -298,13 +307,36 @@ internal fun HomeScreen(
     ) -> Unit,
     onEditApplicationInfo: (
         serialNumber: Long,
-        packageName: String,
+        componentName: String,
     ) -> Unit,
-    onMoveGridItemOutsideFolder: (
-        folderId: String,
+    onGetEblanApplicationInfosByTagIds: (List<Long>) -> Unit,
+    onResetConfigureResultCode: () -> Unit,
+    onStartSyncData: () -> Unit,
+    onStopSyncData: () -> Unit,
+    onUpdateAppDrawerSettings: (AppDrawerSettings) -> Unit,
+    onUpdateEblanApplicationInfos: (List<EblanApplicationInfo>) -> Unit,
+    onUpdateFolderGridItemId: (String?) -> Unit,
+    onMoveFolderGridItem: (
+        folderGridItem: GridItem,
+        applicationInfoGridItems: List<ApplicationInfoGridItem>,
+        movingApplicationInfoGridItem: ApplicationInfoGridItem,
+        dragX: Int,
+        dragY: Int,
+        columns: Int,
+        rows: Int,
+        gridWidth: Int,
+        gridHeight: Int,
+        currentPage: Int,
+    ) -> Unit,
+    onResetGridCacheAfterMoveFolder: () -> Unit,
+    onMoveFolderGridItemOutsideFolder: (
+        folderGridItem: GridItem,
+        movingApplicationInfoGridItem: ApplicationInfoGridItem,
+        applicationInfoGridItems: List<ApplicationInfoGridItem>,
+    ) -> Unit,
+    onShowFolderWhenDragging: (
+        id: String,
         movingGridItem: GridItem,
-        gridItems: List<GridItem>,
-        screen: Screen,
     ) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -327,17 +359,13 @@ internal fun HomeScreen(
 
     val launcherApps = LocalLauncherApps.current
 
-    val byteArrayWrapper = LocalByteArray.current
+    val imageSerializer = LocalImageSerializer.current
 
     val userManager = LocalUserManager.current
 
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val fileManager = LocalFileManager.current
 
     val scope = rememberCoroutineScope()
-
-    var statusBarNotifications by remember {
-        mutableStateOf<Map<String, Int>>(emptyMap())
-    }
 
     val touchSlop = with(density) {
         50.dp.toPx()
@@ -346,6 +374,8 @@ internal fun HomeScreen(
     var accumulatedDragOffset by remember { mutableStateOf(Offset.Zero) }
 
     var sharedElementKey by remember { mutableStateOf<SharedElementKey?>(null) }
+
+    var screenIntSize by remember { mutableStateOf(IntSize.Zero) }
 
     val target = remember {
         object : DragAndDropTarget {
@@ -365,8 +395,9 @@ internal fun HomeScreen(
                         pinItemRequest = pinItemRequest,
                         context = context,
                         launcherAppsWrapper = launcherApps,
-                        byteArrayWrapper = byteArrayWrapper,
+                        imageSerializer = imageSerializer,
                         userManager = userManager,
+                        fileManager = fileManager,
                         onGetPinGridItem = onGetPinGridItem,
                     )
                 }
@@ -394,41 +425,7 @@ internal fun HomeScreen(
                 dragIntOffset = offset
             }
 
-            override fun onDrop(event: DragAndDropEvent): Boolean {
-                return true
-            }
-        }
-    }
-
-    DisposableEffect(key1 = scope) {
-        val eblanNotificationListenerServiceConnection = object : ServiceConnection {
-            private var listener: EblanNotificationListenerService? = null
-
-            override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                listener = (service as EblanNotificationListenerService.LocalBinder).getService()
-
-                scope.launch {
-                    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                        listener?.statusBarNotifications?.collect { statusBarNotifications = it }
-                    }
-                }
-            }
-
-            override fun onServiceDisconnected(name: ComponentName) {
-                listener = null
-            }
-        }
-
-        val intent = Intent(context, EblanNotificationListenerService::class.java)
-
-        context.bindService(
-            intent,
-            eblanNotificationListenerServiceConnection,
-            Context.BIND_AUTO_CREATE,
-        )
-
-        onDispose {
-            context.unbindService(eblanNotificationListenerServiceConnection)
+            override fun onDrop(event: DragAndDropEvent): Boolean = true
         }
     }
 
@@ -468,93 +465,98 @@ internal fun HomeScreen(
                 },
                 target = target,
             )
+            .onSizeChanged { intSize ->
+                screenIntSize = intSize
+            }
             .fillMaxSize(),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            when (homeUiState) {
-                HomeUiState.Loading -> {}
-                is HomeUiState.Success -> {
-                    Success(
-                        screen = screen,
-                        homeData = homeUiState.homeData,
-                        eblanApplicationComponentUiState = eblanApplicationComponentUiState,
-                        pageItems = pageItems,
-                        movedGridItemResult = movedGridItemResult,
-                        screenWidth = this@BoxWithConstraints.constraints.maxWidth,
-                        screenHeight = this@BoxWithConstraints.constraints.maxHeight,
-                        paddingValues = paddingValues,
-                        dragIntOffset = dragIntOffset,
-                        drag = drag,
-                        foldersDataById = foldersDataById,
-                        eblanApplicationInfosByLabel = eblanApplicationInfosByLabel,
-                        eblanAppWidgetProviderInfosByLabel = eblanAppWidgetProviderInfosByLabel,
-                        gridItemCache = gridItemsCache,
-                        pinGridItem = pinGridItem,
-                        statusBarNotifications = statusBarNotifications,
-                        eblanShortcutInfos = eblanShortcutInfos,
-                        eblanShortcutConfigsByLabel = eblanShortcutConfigsByLabel,
-                        eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
-                        iconPackFilePaths = iconPackFilePaths,
-                        onMoveGridItem = onMoveGridItem,
-                        onMoveFolderGridItem = onMoveFolderGridItem,
-                        onResizeGridItem = onResizeGridItem,
-                        onShowGridCache = onShowGridCache,
-                        onShowFolderGridCache = onShowFolderGridCache,
-                        onResetGridCacheAfterResize = onResetGridCacheAfterResize,
-                        onResetGridCacheAfterMove = onResetGridCacheAfterMove,
-                        onCancelGridCache = onCancelGridCache,
-                        onCancelFolderDragGridCache = onCancelFolderDragGridCache,
-                        onEditGridItem = onEditGridItem,
-                        onSettings = onSettings,
-                        onEditPage = onEditPage,
-                        onSaveEditPage = onSaveEditPage,
-                        onUpdateScreen = onUpdateScreen,
-                        onDeleteGridItemCache = onDeleteGridItemCache,
-                        onUpdateGridItemDataCache = onUpdateGridItemDataCache,
-                        onDeleteWidgetGridItemCache = onDeleteWidgetGridItemCache,
-                        onShowFolder = onShowFolder,
-                        onRemoveLastFolder = onRemoveLastFolder,
-                        onAddFolder = onAddFolder,
-                        onResetGridCacheAfterMoveFolder = onResetGridCacheAfterMoveFolder,
-                        onUpdateGridItemImageBitmap = { imageBitmap ->
-                            overlayImageBitmap = imageBitmap
-                        },
-                        onUpdateGridItemOffset = { intOffset, intSize ->
-                            overlayIntOffset = intOffset
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (homeUiState is HomeUiState.Success && screenIntSize != IntSize.Zero) {
+                Success(
+                    screen = screen,
+                    homeData = homeUiState.homeData,
+                    pageItems = pageItems,
+                    movedGridItemResult = movedGridItemResult,
+                    screenWidth = screenIntSize.width,
+                    screenHeight = screenIntSize.height,
+                    paddingValues = paddingValues,
+                    dragIntOffset = dragIntOffset,
+                    drag = drag,
+                    gridItemCache = gridItemsCache,
+                    pinGridItem = pinGridItem,
+                    eblanShortcutInfosGroup = eblanShortcutInfosGroup,
+                    eblanAppWidgetProviderInfosGroup = eblanAppWidgetProviderInfosGroup,
+                    iconPackFilePaths = iconPackFilePaths,
+                    getEblanApplicationInfosByLabel = getEblanApplicationInfosByLabel,
+                    eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
+                    eblanShortcutConfigs = eblanShortcutConfigs,
+                    eblanApplicationInfoTags = eblanApplicationInfoTags,
+                    configureResultCode = configureResultCode,
+                    folderGridItem = folderGridItem,
+                    folderGridItemCache = folderGridItemCache,
+                    onMoveGridItem = onMoveGridItem,
+                    onResizeGridItem = onResizeGridItem,
+                    onShowGridCache = onShowGridCache,
+                    onResetGridCacheAfterResize = onResetGridCacheAfterResize,
+                    onResetGridCacheAfterMove = onResetGridCacheAfterMove,
+                    onResetGridCacheAfterMoveWidgetGridItem = onResetGridCacheAfterMoveWidgetGridItem,
+                    onCancelGridCache = onCancelGridCache,
+                    onEditGridItem = onEditGridItem,
+                    onSettings = onSettings,
+                    onEditPage = onEditPage,
+                    onSaveEditPage = onSaveEditPage,
+                    onUpdateScreen = onUpdateScreen,
+                    onDeleteGridItemCache = onDeleteGridItemCache,
+                    onDeleteWidgetGridItemCache = onDeleteWidgetGridItemCache,
+                    onUpdateGridItemImageBitmap = { imageBitmap ->
+                        overlayImageBitmap = imageBitmap
+                    },
+                    onUpdateGridItemOffset = { intOffset, intSize ->
+                        overlayIntOffset = intOffset
 
-                            overlayIntSize = intSize
-                        },
-                        onGetEblanApplicationInfosByLabel = onGetEblanApplicationInfosByLabel,
-                        onGetEblanAppWidgetProviderInfosByLabel = onGetEblanAppWidgetProviderInfosByLabel,
-                        onGetEblanShortcutConfigsByLabel = onGetEblanShortcutConfigsByLabel,
-                        onDeleteGridItem = onDeleteGridItem,
-                        onResetOverlay = {
-                            overlayIntOffset = IntOffset.Zero
+                        overlayIntSize = intSize
+                    },
+                    onGetEblanApplicationInfosByLabel = onGetEblanApplicationInfosByLabel,
+                    onGetEblanAppWidgetProviderInfosByLabel = onGetEblanAppWidgetProviderInfosByLabel,
+                    onGetEblanShortcutConfigsByLabel = onGetEblanShortcutConfigsByLabel,
+                    onDeleteGridItem = onDeleteGridItem,
+                    onDeleteApplicationInfoGridItem = onDeleteApplicationInfoGridItem,
+                    onUpdateShortcutConfigGridItemDataCache = onUpdateShortcutConfigGridItemDataCache,
+                    onUpdateShortcutConfigIntoShortcutInfoGridItem = onUpdateShortcutConfigIntoShortcutInfoGridItem,
+                    onEditApplicationInfo = onEditApplicationInfo,
+                    onUpdateSharedElementKey = { newSharedElementKey ->
+                        sharedElementKey = newSharedElementKey
+                    },
+                    onResetOverlay = {
+                        overlayIntOffset = IntOffset.Zero
 
-                            overlayIntSize = IntSize.Zero
+                        overlayIntSize = IntSize.Zero
 
-                            overlayImageBitmap = null
+                        overlayImageBitmap = null
 
-                            sharedElementKey = null
-                        },
-                        onUpdateShortcutConfigGridItemDataCache = onUpdateShortcutConfigGridItemDataCache,
-                        onUpdateShortcutConfigIntoShortcutInfoGridItem = onUpdateShortcutConfigIntoShortcutInfoGridItem,
-                        onEditApplicationInfo = onEditApplicationInfo,
-                        onUpdateSharedElementKey = { newSharedElementKey ->
-                            sharedElementKey = newSharedElementKey
-                        },
-                        onMoveGridItemOutsideFolder = onMoveGridItemOutsideFolder,
-                    )
-                }
+                        sharedElementKey = null
+                    },
+                    onGetEblanApplicationInfosByTagIds = onGetEblanApplicationInfosByTagIds,
+                    onResetConfigureResultCode = onResetConfigureResultCode,
+                    onStartSyncData = onStartSyncData,
+                    onStopSyncData = onStopSyncData,
+                    onUpdateAppDrawerSettings = onUpdateAppDrawerSettings,
+                    onUpdateEblanApplicationInfos = onUpdateEblanApplicationInfos,
+                    onUpdateFolderGridItemId = onUpdateFolderGridItemId,
+                    onMoveFolderGridItem = onMoveFolderGridItem,
+                    onResetGridCacheAfterMoveFolder = onResetGridCacheAfterMoveFolder,
+                    onMoveFolderGridItemOutsideFolder = onMoveFolderGridItemOutsideFolder,
+                    onShowFolderWhenDragging = onShowFolderWhenDragging,
+                )
+
+                OverlayImage(
+                    overlayIntOffset = overlayIntOffset,
+                    overlayIntSize = overlayIntSize,
+                    overlayImageBitmap = overlayImageBitmap,
+                    sharedElementKey = sharedElementKey,
+                    drag = drag,
+                )
             }
-
-            OverlayImage(
-                overlayIntOffset = overlayIntOffset,
-                overlayIntSize = overlayIntSize,
-                overlayImageBitmap = overlayImageBitmap,
-                sharedElementKey = sharedElementKey,
-                drag = drag,
-            )
         }
     }
 }
@@ -565,7 +567,6 @@ private fun SharedTransitionScope.Success(
     modifier: Modifier = Modifier,
     screen: Screen,
     homeData: HomeData,
-    eblanApplicationComponentUiState: EblanApplicationComponentUiState,
     pageItems: List<PageItem>,
     movedGridItemResult: MoveGridItemResult?,
     screenWidth: Int,
@@ -573,27 +574,19 @@ private fun SharedTransitionScope.Success(
     paddingValues: PaddingValues,
     dragIntOffset: IntOffset,
     drag: Drag,
-    foldersDataById: ArrayDeque<FolderDataById>,
-    eblanApplicationInfosByLabel: List<EblanApplicationInfo>,
-    eblanAppWidgetProviderInfosByLabel: Map<EblanApplicationInfoGroup, List<EblanAppWidgetProviderInfo>>,
     gridItemCache: GridItemCache,
     pinGridItem: GridItem?,
-    statusBarNotifications: Map<String, Int>,
-    eblanShortcutInfos: Map<EblanShortcutInfoByGroup, List<EblanShortcutInfo>>,
-    eblanShortcutConfigsByLabel: Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>,
-    eblanAppWidgetProviderInfos: Map<String, List<EblanAppWidgetProviderInfo>>,
+    eblanShortcutInfosGroup: Map<EblanShortcutInfoByGroup, List<EblanShortcutInfo>>,
+    eblanAppWidgetProviderInfosGroup: Map<String, List<EblanAppWidgetProviderInfo>>,
     iconPackFilePaths: Map<String, String>,
+    getEblanApplicationInfosByLabel: GetEblanApplicationInfosByLabel,
+    eblanAppWidgetProviderInfos: Map<EblanApplicationInfoGroup, List<EblanAppWidgetProviderInfo>>,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    eblanApplicationInfoTags: List<EblanApplicationInfoTag>,
+    configureResultCode: Int?,
+    folderGridItem: GridItem?,
+    folderGridItemCache: GridItem?,
     onMoveGridItem: (
-        movingGridItem: GridItem,
-        x: Int,
-        y: Int,
-        columns: Int,
-        rows: Int,
-        gridWidth: Int,
-        gridHeight: Int,
-        lockMovement: Boolean,
-    ) -> Unit,
-    onMoveFolderGridItem: (
         movingGridItem: GridItem,
         x: Int,
         y: Int,
@@ -610,36 +603,31 @@ private fun SharedTransitionScope.Success(
         lockMovement: Boolean,
     ) -> Unit,
     onShowGridCache: (
-        gridItems: List<GridItem>,
         screen: Screen,
-    ) -> Unit,
-    onShowFolderGridCache: (
         gridItems: List<GridItem>,
-        screen: Screen,
     ) -> Unit,
     onResetGridCacheAfterResize: (GridItem) -> Unit,
     onResetGridCacheAfterMove: (MoveGridItemResult) -> Unit,
-    onResetGridCacheAfterMoveFolder: () -> Unit,
+    onResetGridCacheAfterMoveWidgetGridItem: (MoveGridItemResult) -> Unit,
     onCancelGridCache: () -> Unit,
-    onCancelFolderDragGridCache: () -> Unit,
     onEditGridItem: (String) -> Unit,
     onSettings: () -> Unit,
-    onEditPage: (List<GridItem>) -> Unit,
+    onEditPage: (
+        gridItems: List<GridItem>,
+        associate: Associate,
+    ) -> Unit,
     onSaveEditPage: (
         id: Int,
         pageItems: List<PageItem>,
         pageItemsToDelete: List<PageItem>,
+        associate: Associate,
     ) -> Unit,
     onUpdateScreen: (Screen) -> Unit,
     onDeleteGridItemCache: (GridItem) -> Unit,
-    onUpdateGridItemDataCache: (GridItem) -> Unit,
     onDeleteWidgetGridItemCache: (
         gridItem: GridItem,
         appWidgetId: Int,
     ) -> Unit,
-    onShowFolder: (String) -> Unit,
-    onRemoveLastFolder: () -> Unit,
-    onAddFolder: (String) -> Unit,
     onUpdateGridItemImageBitmap: (ImageBitmap?) -> Unit,
     onUpdateGridItemOffset: (
         intOffset: IntOffset,
@@ -649,7 +637,7 @@ private fun SharedTransitionScope.Success(
     onGetEblanAppWidgetProviderInfosByLabel: (String) -> Unit,
     onGetEblanShortcutConfigsByLabel: (String) -> Unit,
     onDeleteGridItem: (GridItem) -> Unit,
-    onResetOverlay: () -> Unit,
+    onDeleteApplicationInfoGridItem: (ApplicationInfoGridItem) -> Unit,
     onUpdateShortcutConfigGridItemDataCache: (
         byteArray: ByteArray?,
         moveGridItemResult: MoveGridItemResult,
@@ -662,25 +650,47 @@ private fun SharedTransitionScope.Success(
     ) -> Unit,
     onEditApplicationInfo: (
         serialNumber: Long,
-        packageName: String,
+        componentName: String,
     ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
-    onMoveGridItemOutsideFolder: (
-        folderId: String,
+    onResetOverlay: () -> Unit,
+    onGetEblanApplicationInfosByTagIds: (List<Long>) -> Unit,
+    onResetConfigureResultCode: () -> Unit,
+    onStartSyncData: () -> Unit,
+    onStopSyncData: () -> Unit,
+    onUpdateAppDrawerSettings: (AppDrawerSettings) -> Unit,
+    onUpdateEblanApplicationInfos: (List<EblanApplicationInfo>) -> Unit,
+    onUpdateFolderGridItemId: (String?) -> Unit,
+    onMoveFolderGridItem: (
+        folderGridItem: GridItem,
+        applicationInfoGridItems: List<ApplicationInfoGridItem>,
+        movingApplicationInfoGridItem: ApplicationInfoGridItem,
+        dragX: Int,
+        dragY: Int,
+        columns: Int,
+        rows: Int,
+        gridWidth: Int,
+        gridHeight: Int,
+        currentPage: Int,
+    ) -> Unit,
+    onResetGridCacheAfterMoveFolder: () -> Unit,
+    onMoveFolderGridItemOutsideFolder: (
+        folderGridItem: GridItem,
+        movingApplicationInfoGridItem: ApplicationInfoGridItem,
+        applicationInfoGridItems: List<ApplicationInfoGridItem>,
+    ) -> Unit,
+    onShowFolderWhenDragging: (
+        id: String,
         movingGridItem: GridItem,
-        gridItems: List<GridItem>,
-        screen: Screen,
     ) -> Unit,
 ) {
-    val activity = LocalActivity.current
-
     val context = LocalContext.current
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    val appWidgetHost = LocalAppWidgetHost.current
+    val activity = LocalActivity.current
 
     val pinItemRequestWrapper = LocalPinItemRequest.current
+
+    val userManager = LocalUserManager.current
 
     val gridHorizontalPagerState = rememberPagerState(
         initialPage = if (homeData.userData.homeSettings.infiniteScroll) {
@@ -697,13 +707,22 @@ private fun SharedTransitionScope.Success(
         },
     )
 
-    val folderGridHorizontalPagerState = rememberPagerState(
+    val dockGridHorizontalPagerState = rememberPagerState(
+        initialPage = if (homeData.userData.homeSettings.dockInfiniteScroll) {
+            (Int.MAX_VALUE / 2) + homeData.userData.homeSettings.dockInitialPage
+        } else {
+            homeData.userData.homeSettings.dockInitialPage
+        },
         pageCount = {
-            foldersDataById.lastOrNull()?.pageCount ?: 0
+            if (homeData.userData.homeSettings.dockInfiniteScroll) {
+                Int.MAX_VALUE
+            } else {
+                homeData.userData.homeSettings.dockPageCount
+            }
         },
     )
 
-    val currentPage by remember(
+    val gridCurrentPage by remember(
         key1 = gridHorizontalPagerState,
         key2 = homeData.userData.homeSettings,
     ) {
@@ -716,11 +735,86 @@ private fun SharedTransitionScope.Success(
         }
     }
 
+    val dockCurrentPage by remember(
+        key1 = dockGridHorizontalPagerState,
+        key2 = homeData.userData.homeSettings,
+    ) {
+        derivedStateOf {
+            calculatePage(
+                index = dockGridHorizontalPagerState.currentPage,
+                infiniteScroll = homeData.userData.homeSettings.dockInfiniteScroll,
+                pageCount = homeData.userData.homeSettings.dockPageCount,
+            )
+        }
+    }
+
     var gridItemSource by remember { mutableStateOf<GridItemSource?>(null) }
 
-    val scope = rememberCoroutineScope()
-
     var managedProfileResult by remember { mutableStateOf<ManagedProfileResult?>(null) }
+
+    var statusBarNotifications by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+
+    var associate by remember { mutableStateOf<Associate?>(null) }
+
+    val currentPage by remember(
+        key1 = gridHorizontalPagerState,
+        key2 = dockGridHorizontalPagerState,
+        key3 = homeData.userData.homeSettings,
+    ) {
+        derivedStateOf {
+            when (associate) {
+                Associate.Grid -> {
+                    gridCurrentPage
+                }
+
+                Associate.Dock -> {
+                    dockCurrentPage
+                }
+
+                null -> {
+                    0
+                }
+            }
+        }
+    }
+
+    val folderGridHorizontalPagerState = rememberPagerState(
+        pageCount = {
+            when (val data = folderGridItem?.data) {
+                is GridItemData.Folder -> {
+                    data.gridItemsByPage.size
+                }
+
+                else -> 0
+            }
+        },
+    )
+
+    var lastFolderPopupX by rememberSaveable { mutableIntStateOf(0) }
+
+    var lastFolderPopupY by rememberSaveable { mutableIntStateOf(0) }
+
+    var lastFolderPopupWidth by rememberSaveable { mutableIntStateOf(0) }
+
+    var lastFolderPopupHeight by rememberSaveable { mutableIntStateOf(0) }
+
+    var folderPopupIntOffset by remember {
+        mutableStateOf(
+            IntOffset(
+                x = lastFolderPopupX,
+                y = lastFolderPopupY,
+            ),
+        )
+    }
+
+    var folderPopupIntSize by remember {
+        mutableStateOf(
+            IntSize(
+                width = lastFolderPopupWidth,
+                height = lastFolderPopupHeight,
+            ),
+        )
+    }
 
     LaunchedEffect(key1 = pinGridItem) {
         val pinItemRequest = pinItemRequestWrapper.getPinItemRequest()
@@ -732,39 +826,37 @@ private fun SharedTransitionScope.Success(
             )
 
             onShowGridCache(
-                homeData.gridItems,
                 Screen.Drag,
+                homeData.gridItems,
             )
         }
     }
 
-    DisposableEffect(key1 = lifecycleOwner) {
-        val lifecycleEventObserver = LifecycleEventObserver { _, event ->
-            handleLifecycleEvent(
-                context = context,
-                scope = scope,
-                lifecycleOwner = lifecycleOwner,
-                event = event,
-                homeData = homeData,
-                pinItemRequestWrapper = pinItemRequestWrapper,
-                appWidgetHost = appWidgetHost,
-                onUpdateManagedProfileResult = { newManagedProfileResult ->
-                    managedProfileResult = newManagedProfileResult
-                },
-            )
-        }
-
-        lifecycleOwner.lifecycle.addObserver(lifecycleEventObserver)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(lifecycleEventObserver)
-        }
-    }
+    LifecycleEffect(
+        syncDataEnabled = homeData.userData.experimentalSettings.syncData,
+        userManagerWrapper = userManager,
+        onManagedProfileResultChange = { newManagedProfileResult ->
+            managedProfileResult = newManagedProfileResult
+        },
+        onStatusBarNotificationsChange = { newStatusBarNotifications ->
+            statusBarNotifications = newStatusBarNotifications
+        },
+        onStartSyncData = onStartSyncData,
+        onStopSyncData = onStopSyncData,
+    )
 
     LaunchedEffect(key1 = Unit) {
         if (homeData.userData.homeSettings.lockScreenOrientation) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
         }
+    }
+
+    LaunchedEffect(key1 = screen) {
+        handleKlwpBroadcasts(
+            klwpIntegration = homeData.userData.experimentalSettings.klwpIntegration,
+            screen = screen,
+            context = context,
+        )
     }
 
     AnimatedContent(
@@ -777,9 +869,8 @@ private fun SharedTransitionScope.Success(
                     gridItems = homeData.gridItems,
                     gridItemsByPage = homeData.gridItemsByPage,
                     drag = drag,
-                    dockGridItems = homeData.dockGridItems,
+                    dockGridItemsByPage = homeData.dockGridItemsByPage,
                     textColor = homeData.textColor,
-                    eblanApplicationComponentUiState = eblanApplicationComponentUiState,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight,
                     paddingValues = paddingValues,
@@ -789,34 +880,37 @@ private fun SharedTransitionScope.Success(
                     gestureSettings = homeData.userData.gestureSettings,
                     gridItemSource = gridItemSource,
                     homeSettings = homeData.userData.homeSettings,
-                    eblanApplicationInfosByLabel = eblanApplicationInfosByLabel,
-                    eblanAppWidgetProviderInfosByLabel = eblanAppWidgetProviderInfosByLabel,
                     gridHorizontalPagerState = gridHorizontalPagerState,
+                    dockGridHorizontalPagerState = dockGridHorizontalPagerState,
                     currentPage = currentPage,
                     statusBarNotifications = statusBarNotifications,
-                    eblanShortcutInfos = eblanShortcutInfos,
-                    eblanShortcutConfigsByLabel = eblanShortcutConfigsByLabel,
-                    eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
+                    eblanShortcutInfosGroup = eblanShortcutInfosGroup,
+                    eblanAppWidgetProviderInfosGroup = eblanAppWidgetProviderInfosGroup,
                     iconPackFilePaths = iconPackFilePaths,
                     managedProfileResult = managedProfileResult,
-                    onTapFolderGridItem = onShowFolder,
-                    onDraggingGridItem = {
-                        onShowGridCache(
-                            homeData.gridItems,
-                            Screen.Drag,
-                        )
-                    },
+                    screen = targetState,
+                    experimentalSettings = homeData.userData.experimentalSettings,
+                    getEblanApplicationInfosByLabel = getEblanApplicationInfosByLabel,
+                    eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos,
+                    eblanShortcutConfigs = eblanShortcutConfigs,
+                    eblanApplicationInfoTags = eblanApplicationInfoTags,
+                    folderGridHorizontalPagerState = folderGridHorizontalPagerState,
+                    folderGridItem = folderGridItem,
+                    folderPopupIntOffset = folderPopupIntOffset,
+                    folderPopupIntSize = folderPopupIntSize,
+                    onDraggingGridItem = onShowGridCache,
                     onEditGridItem = onEditGridItem,
-                    onResize = {
-                        onShowGridCache(
-                            homeData.gridItems,
-                            Screen.Resize,
-                        )
-                    },
+                    onResize = onShowGridCache,
                     onSettings = onSettings,
-                    onEditPage = onEditPage,
+                    onEditPage = { gridItems, newAssociate ->
+                        associate = newAssociate
+
+                        onEditPage(gridItems, newAssociate)
+                    },
                     onLongPressGridItem = { newGridItemSource, imageBitmap ->
                         gridItemSource = newGridItemSource
+
+                        associate = newGridItemSource.gridItem.associate
 
                         onUpdateGridItemImageBitmap(imageBitmap)
                     },
@@ -825,9 +919,26 @@ private fun SharedTransitionScope.Success(
                     onGetEblanAppWidgetProviderInfosByLabel = onGetEblanAppWidgetProviderInfosByLabel,
                     onGetEblanShortcutConfigsByLabel = onGetEblanShortcutConfigsByLabel,
                     onDeleteGridItem = onDeleteGridItem,
-                    onResetOverlay = onResetOverlay,
+                    onDeleteApplicationInfoGridItem = onDeleteApplicationInfoGridItem,
                     onEditApplicationInfo = onEditApplicationInfo,
                     onUpdateSharedElementKey = onUpdateSharedElementKey,
+                    onResetOverlay = onResetOverlay,
+                    onGetEblanApplicationInfosByTagIds = onGetEblanApplicationInfosByTagIds,
+                    onUpdateAppDrawerSettings = onUpdateAppDrawerSettings,
+                    onUpdateEblanApplicationInfos = onUpdateEblanApplicationInfos,
+                    onTapFolderGridItem = { id, intOffset, intSize ->
+                        onUpdateFolderGridItemId(id)
+
+                        lastFolderPopupX = intOffset.x
+                        lastFolderPopupY = intOffset.y
+
+                        lastFolderPopupWidth = intSize.width
+                        lastFolderPopupHeight = intSize.height
+
+                        folderPopupIntOffset = intOffset
+
+                        folderPopupIntSize = intSize
+                    },
                 )
             }
 
@@ -840,35 +951,71 @@ private fun SharedTransitionScope.Success(
                     screenWidth = screenWidth,
                     screenHeight = screenHeight,
                     paddingValues = paddingValues,
-                    dockGridItemsCache = gridItemCache.dockGridItemsCache,
                     textColor = homeData.textColor,
                     moveGridItemResult = movedGridItemResult,
                     homeSettings = homeData.userData.homeSettings,
                     gridHorizontalPagerState = gridHorizontalPagerState,
+                    dockGridHorizontalPagerState = dockGridHorizontalPagerState,
                     currentPage = currentPage,
                     statusBarNotifications = statusBarNotifications,
                     hasShortcutHostPermission = homeData.hasShortcutHostPermission,
                     iconPackFilePaths = iconPackFilePaths,
                     lockMovement = homeData.userData.experimentalSettings.lockMovement,
+                    screen = targetState,
+                    associate = associate,
+                    configureResultCode = configureResultCode,
+                    folderGridItem = folderGridItemCache,
+                    folderPopupIntOffset = folderPopupIntOffset,
+                    folderPopupIntSize = folderPopupIntSize,
+                    folderGridHorizontalPagerState = folderGridHorizontalPagerState,
                     onMoveGridItem = onMoveGridItem,
                     onDragEndAfterMove = onResetGridCacheAfterMove,
+                    onDragEndAfterMoveWidgetGridItem = onResetGridCacheAfterMoveWidgetGridItem,
                     onDragCancelAfterMove = onCancelGridCache,
                     onDeleteGridItemCache = onDeleteGridItemCache,
-                    onUpdateGridItemDataCache = onUpdateGridItemDataCache,
                     onDeleteWidgetGridItemCache = onDeleteWidgetGridItemCache,
                     onUpdateShortcutConfigGridItemDataCache = onUpdateShortcutConfigGridItemDataCache,
                     onUpdateShortcutConfigIntoShortcutInfoGridItem = onUpdateShortcutConfigIntoShortcutInfoGridItem,
+                    onUpdateSharedElementKey = onUpdateSharedElementKey,
+                    onUpdateAssociate = { newAssociate ->
+                        associate = newAssociate
+                    },
+                    onResetConfigureResultCode = onResetConfigureResultCode,
+                    onMoveFolderGridItem = onMoveFolderGridItem,
+                    onDragEndAfterMoveFolder = onResetGridCacheAfterMoveFolder,
+                    onMoveFolderGridItemOutsideFolder = onMoveFolderGridItemOutsideFolder,
+                    onUpdateGridItemSource = { newGridItemSource ->
+                        gridItemSource = newGridItemSource
+                    },
+                    onShowFolderWhenDragging = { id, movingGridItem, newGridItemSource, intOffset, intSize ->
+                        onShowFolderWhenDragging(
+                            id,
+                            movingGridItem,
+                        )
+
+                        gridItemSource = newGridItemSource
+
+                        lastFolderPopupX = intOffset.x
+                        lastFolderPopupY = intOffset.y
+
+                        lastFolderPopupWidth = intSize.width
+                        lastFolderPopupHeight = intSize.height
+
+                        folderPopupIntOffset = intOffset
+
+                        folderPopupIntSize = intSize
+                    },
                 )
             }
 
             Screen.Resize -> {
                 ResizeScreen(
-                    currentPage = currentPage,
+                    gridCurrentPage = gridCurrentPage,
+                    dockCurrentPage = dockCurrentPage,
                     gridItemCache = gridItemCache,
                     gridItem = gridItemSource?.gridItem,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight,
-                    dockGridItemsCache = gridItemCache.dockGridItemsCache,
                     textColor = homeData.textColor,
                     paddingValues = paddingValues,
                     homeSettings = homeData.userData.homeSettings,
@@ -877,6 +1024,8 @@ private fun SharedTransitionScope.Success(
                     iconPackFilePaths = iconPackFilePaths,
                     lockMovement = homeData.userData.experimentalSettings.lockMovement,
                     moveGridItemResult = movedGridItemResult,
+                    screen = targetState,
+                    gridHorizontalPagerState = gridHorizontalPagerState,
                     onResizeGridItem = onResizeGridItem,
                     onResizeEnd = onResetGridCacheAfterResize,
                     onResizeCancel = onCancelGridCache,
@@ -896,83 +1045,17 @@ private fun SharedTransitionScope.Success(
                     homeSettings = homeData.userData.homeSettings,
                     hasShortcutHostPermission = homeData.hasShortcutHostPermission,
                     iconPackFilePaths = iconPackFilePaths,
+                    screen = targetState,
+                    associate = associate,
                     onSaveEditPage = onSaveEditPage,
                     onUpdateScreen = onUpdateScreen,
-                )
-            }
-
-            Screen.Folder -> {
-                FolderScreen(
-                    foldersDataById = foldersDataById,
-                    drag = drag,
-                    paddingValues = paddingValues,
-                    hasShortcutHostPermission = homeData.hasShortcutHostPermission,
-                    screenWidth = screenWidth,
-                    screenHeight = screenHeight,
-                    textColor = homeData.textColor,
-                    homeSettings = homeData.userData.homeSettings,
-                    folderGridHorizontalPagerState = folderGridHorizontalPagerState,
-                    statusBarNotifications = statusBarNotifications,
-                    iconPackFilePaths = iconPackFilePaths,
-                    onUpdateScreen = onUpdateScreen,
-                    onRemoveLastFolder = onRemoveLastFolder,
-                    onAddFolder = onAddFolder,
-                    onLongPressGridItem = { newGridItemSource, imageBitmap ->
-                        gridItemSource = newGridItemSource
-
-                        onUpdateGridItemImageBitmap(imageBitmap)
-                    },
-                    onUpdateGridItemOffset = onUpdateGridItemOffset,
-                    onDraggingGridItem = { folderGridItems ->
-                        onShowFolderGridCache(
-                            folderGridItems,
-                            Screen.FolderDrag,
-                        )
-                    },
-                    onResetOverlay = onResetOverlay,
-                    onUpdateSharedElementKey = onUpdateSharedElementKey,
-                )
-            }
-
-            Screen.FolderDrag -> {
-                FolderDragScreen(
-                    gridItemCache = gridItemCache,
-                    foldersDataById = foldersDataById,
-                    gridItemSource = gridItemSource,
-                    textColor = homeData.textColor,
-                    drag = drag,
-                    dragIntOffset = dragIntOffset,
-                    screenWidth = screenWidth,
-                    screenHeight = screenHeight,
-                    paddingValues = paddingValues,
-                    homeSettings = homeData.userData.homeSettings,
-                    moveGridItemResult = movedGridItemResult,
-                    folderGridHorizontalPagerState = folderGridHorizontalPagerState,
-                    statusBarNotifications = statusBarNotifications,
-                    hasShortcutHostPermission = homeData.hasShortcutHostPermission,
-                    iconPackFilePaths = iconPackFilePaths,
-                    lockMovement = homeData.userData.experimentalSettings.lockMovement,
-                    onMoveFolderGridItem = onMoveFolderGridItem,
-                    onDragEnd = onResetGridCacheAfterMoveFolder,
-                    onDragCancel = onCancelFolderDragGridCache,
-                    onMoveGridItemOutsideFolder = { newGridItemSource, folderId, movingGridItem ->
-                        gridItemSource = newGridItemSource
-
-                        onMoveGridItemOutsideFolder(
-                            folderId,
-                            movingGridItem,
-                            homeData.gridItems,
-                            Screen.Drag,
-                        )
-                    },
-                    onResetOverlay = onResetOverlay,
                 )
             }
         }
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        PostNotificationPermission()
+        PostNotificationPermissionEffect()
     }
 }
 
@@ -1012,7 +1095,7 @@ private fun SharedTransitionScope.OverlayImage(
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-private fun PostNotificationPermission(modifier: Modifier = Modifier) {
+private fun PostNotificationPermissionEffect(modifier: Modifier = Modifier) {
     val notificationsPermissionState =
         rememberPermissionState(permission = Manifest.permission.POST_NOTIFICATIONS)
 
@@ -1040,5 +1123,131 @@ private fun PostNotificationPermission(modifier: Modifier = Modifier) {
                 showTextDialog = false
             },
         )
+    }
+}
+
+@Composable
+private fun LifecycleEffect(
+    syncDataEnabled: Boolean,
+    userManagerWrapper: AndroidUserManagerWrapper,
+    onManagedProfileResultChange: (ManagedProfileResult?) -> Unit,
+    onStatusBarNotificationsChange: (Map<String, Int>) -> Unit,
+    onStartSyncData: () -> Unit,
+    onStopSyncData: () -> Unit,
+) {
+    val context = LocalContext.current
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val appWidgetHost = LocalAppWidgetHost.current
+
+    val pinItemRequestWrapper = LocalPinItemRequest.current
+
+    DisposableEffect(key1 = lifecycleOwner) {
+        val eblanNotificationListenerIntent =
+            Intent(context, EblanNotificationListenerService::class.java)
+
+        var shouldUnbindEblanNotificationListenerService = false
+
+        val eblanNotificationListenerServiceConnection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                val listener =
+                    (service as EblanNotificationListenerService.LocalBinder).getService()
+
+                lifecycleOwner.lifecycleScope.launch {
+                    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        listener.statusBarNotifications.collect {
+                            onStatusBarNotificationsChange(it)
+                        }
+                    }
+                }
+            }
+
+            override fun onServiceDisconnected(name: ComponentName) {}
+        }
+
+        val managedProfileBroadcastReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val userHandle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(
+                        Intent.EXTRA_USER,
+                        UserHandle::class.java,
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_USER)
+                }
+
+                if (userHandle != null) {
+                    onStartSyncData()
+
+                    onManagedProfileResultChange(
+                        ManagedProfileResult(
+                            serialNumber = userManagerWrapper.getSerialNumberForUser(userHandle = userHandle),
+                            isQuiteModeEnabled = userManagerWrapper.isQuietModeEnabled(userHandle = userHandle),
+                        ),
+                    )
+                }
+            }
+        }
+
+        val lifecycleEventObserver = LifecycleEventObserver { lifecycleOwner, event ->
+            lifecycleOwner.lifecycleScope.launch {
+                when (event) {
+                    Lifecycle.Event.ON_START -> {
+                        if (syncDataEnabled && pinItemRequestWrapper.getPinItemRequest() == null) {
+                            context.registerReceiver(
+                                managedProfileBroadcastReceiver,
+                                IntentFilter().apply {
+                                    addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE)
+                                    addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE)
+                                    addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED)
+                                    addAction(Intent.ACTION_MANAGED_PROFILE_ADDED)
+                                    addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                                        addAction(Intent.ACTION_PROFILE_AVAILABLE)
+                                        addAction(Intent.ACTION_PROFILE_UNAVAILABLE)
+                                    }
+                                },
+                            )
+
+                            shouldUnbindEblanNotificationListenerService = context.bindService(
+                                eblanNotificationListenerIntent,
+                                eblanNotificationListenerServiceConnection,
+                                Context.BIND_AUTO_CREATE,
+                            )
+
+                            onStartSyncData()
+                        }
+
+                        appWidgetHost.startListening()
+                    }
+
+                    Lifecycle.Event.ON_STOP -> {
+                        if (syncDataEnabled && pinItemRequestWrapper.getPinItemRequest() == null) {
+                            if (shouldUnbindEblanNotificationListenerService) {
+                                context.unregisterReceiver(managedProfileBroadcastReceiver)
+
+                                context.unbindService(eblanNotificationListenerServiceConnection)
+
+                                shouldUnbindEblanNotificationListenerService = false
+                            }
+
+                            onStopSyncData()
+                        }
+
+                        appWidgetHost.stopListening()
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(lifecycleEventObserver)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(lifecycleEventObserver)
+        }
     }
 }

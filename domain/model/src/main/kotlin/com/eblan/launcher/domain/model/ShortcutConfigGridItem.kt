@@ -19,7 +19,6 @@ package com.eblan.launcher.domain.model
 
 data class ShortcutConfigGridItem(
     val id: String,
-    val folderId: String?,
     val page: Int,
     val startColumn: Int,
     val startRow: Int,
@@ -40,4 +39,7 @@ data class ShortcutConfigGridItem(
     val customIcon: String?,
     val customLabel: String?,
     val gridItemSettings: GridItemSettings,
+    val doubleTap: EblanAction,
+    val swipeUp: EblanAction,
+    val swipeDown: EblanAction,
 )

@@ -23,6 +23,7 @@ import com.eblan.launcher.data.datastore.mapper.toEblanActionProto
 import com.eblan.launcher.data.datastore.mapper.toThemeProto
 import com.eblan.launcher.data.datastore.proto.UserDataProto
 import com.eblan.launcher.data.datastore.proto.appdrawer.AppDrawerSettingsProto
+import com.eblan.launcher.data.datastore.proto.appdrawer.EblanApplicationInfoOrderProto
 import com.eblan.launcher.data.datastore.proto.experimental.ExperimentalSettingsProto
 import com.eblan.launcher.data.datastore.proto.general.GeneralSettingsProto
 import com.eblan.launcher.data.datastore.proto.gesture.GestureSettingsProto
@@ -32,6 +33,7 @@ import com.eblan.launcher.data.datastore.proto.home.HorizontalAlignmentProto
 import com.eblan.launcher.data.datastore.proto.home.TextColorProto
 import com.eblan.launcher.data.datastore.proto.home.VerticalArrangementProto
 import com.eblan.launcher.domain.model.EblanAction
+import com.eblan.launcher.domain.model.EblanActionType
 import com.eblan.launcher.domain.model.Theme
 import com.google.protobuf.InvalidProtocolBufferException
 import java.io.InputStream
@@ -53,6 +55,10 @@ class UserDataSerializer @Inject constructor() : Serializer<UserDataProto> {
         singleLineLabel = true
         horizontalAlignmentProto = HorizontalAlignmentProto.CenterHorizontally
         verticalArrangementProto = VerticalArrangementProto.Top
+        customTextColor = 0x00000000
+        customBackgroundColor = 0x00000000
+        padding = 0
+        cornerRadius = 0
     }.build()
 
     private val defaultHomeSettingsProto = HomeSettingsProto.newBuilder().apply {
@@ -65,28 +71,44 @@ class UserDataSerializer @Inject constructor() : Serializer<UserDataProto> {
         dockHeight = 100
         initialPage = 0
         wallpaperScroll = false
-        folderColumns = 5
-        folderRows = 5
         gridItemSettingsProto = defaultGridItemSettingsProto
         lockScreenOrientation = false
+        dockPageCount = 1
+        dockInfiniteScroll = false
     }.build()
 
     private val defaultAppDrawerSettingsProto = AppDrawerSettingsProto.newBuilder().apply {
         appDrawerColumns = 5
         appDrawerRowsHeight = 100
         gridItemSettingsProto = defaultGridItemSettingsProto
+        eblanApplicationInfoOrderProto = EblanApplicationInfoOrderProto.Alphabetical
     }.build()
 
     private val defaultGestureSettingsProto = GestureSettingsProto.newBuilder().apply {
-        doubleTapProto = EblanAction.None.toEblanActionProto()
-        swipeUpProto = EblanAction.OpenAppDrawer.toEblanActionProto()
-        swipeDownProto = EblanAction.None.toEblanActionProto()
+        doubleTapProto = EblanAction(
+            eblanActionType = EblanActionType.None,
+            serialNumber = 0L,
+            componentName = "",
+        ).toEblanActionProto()
+
+        swipeUpProto = EblanAction(
+            eblanActionType = EblanActionType.OpenAppDrawer,
+            serialNumber = 0L,
+            componentName = "",
+        ).toEblanActionProto()
+
+        swipeDownProto = EblanAction(
+            eblanActionType = EblanActionType.None,
+            serialNumber = 0L,
+            componentName = "",
+        ).toEblanActionProto()
     }.build()
 
     private val defaultExperimentalSettings = ExperimentalSettingsProto.newBuilder().apply {
         syncData = true
         firstLaunch = true
         lockMovement = false
+        klwpIntegration = false
     }.build()
 
     override val defaultValue: UserDataProto = UserDataProto.newBuilder().apply {

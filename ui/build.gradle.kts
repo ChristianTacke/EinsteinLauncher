@@ -45,7 +45,8 @@ android {
 }
 
 dependencies {
-    api(projects.framework.byteArray)
+    api(projects.framework.accessibilityManager)
+    api(projects.framework.imageSerializer)
     api(projects.framework.iconPackManager)
     api(projects.framework.launcherApps)
     api(projects.framework.packageManager)

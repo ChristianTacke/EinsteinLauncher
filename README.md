@@ -1,18 +1,17 @@
 <div align = "center">
 
-<img width="100" src="app/src/main/ic_launcher-playstore.png" alt="Geto" align="center">
+<img width="100" src="app/src/main/ic_launcher-playstore.png" alt="YagniLauncher" align="center">
 
-# Einstein Launcher
+# Yagni Launcher
 
 Only 2 MB Android Launcher, total control, zero bloat, zero tracking
 
-![GitHub Release](https://img.shields.io/github/v/release/JackEblan/EblanLauncher?style=for-the-badge&color=lightseagreen)
+![GitHub Release](https://img.shields.io/github/v/release/JackEblan/YagniLauncher?style=for-the-badge&color=lightseagreen)
 ![IzzyOnDroid Version](https://img.shields.io/f-droid/v/com.eblan.launcher?baseUrl=https%3A%2F%2Fapt.izzysoft.de%2Ffdroid&style=for-the-badge&label=IzzyOnDroid&color=mediumseagreen)
 ![F-Droid Version](https://img.shields.io/f-droid/v/com.eblan.launcher?style=for-the-badge&color=seagreen)
-![GitHub License](https://img.shields.io/github/license/JackEblan/EblanLauncher?style=for-the-badge&color=teal)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/JackEblan/EblanLauncher/total?style=for-the-badge&color=aquamarine)
-![Lines Of Code](https://img.shields.io/endpoint?url=https%3A%2F%2Fghloc.vercel.app%2Fapi%2FJackEblan%2FEblanLauncher%2Fbadge%3Fformat%3Dhuman%26filter%3D.kt%24&style=for-the-badge&color=lightseagreen)
-
+![GitHub License](https://img.shields.io/github/license/JackEblan/YagniLauncher?style=for-the-badge&color=teal)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/JackEblan/YagniLauncher/total?style=for-the-badge&color=aquamarine)
+![Lines Of Code](https://img.shields.io/endpoint?url=https%3A%2F%2Fghloc.vercel.app%2Fapi%2FJackEblan%2FYagniLauncher%2Fbadge%3Fformat%3Dhuman%26filter%3Dsrc%2Fmain&style=for-the-badge&color=lightseagreen)
 
 [<img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height="80">](https://apt.izzysoft.de/packages/com.eblan.launcher)
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/en/packages/com.eblan.launcher/)
@@ -22,20 +21,11 @@ Only 2 MB Android Launcher, total control, zero bloat, zero tracking
 > [!WARNING]
 > This is an Alpha Stage Build. Expect bugs, instability, and incomplete features.
 
-> [!NOTE]
-> Formerly known as **Eblan Launcher**, it has now been renamed to **Einstein Launcher**.
-
 ## About The Project
 
-Most Android launchers are just forks of AOSP’s Launcher3. I wanted to try something
-different—building from scratch while welcoming new developers and applying solid coding principles
-and best practices to keep the project alive for the long run. Open-source Launcher3 forks often end
-up abandoned because of their complexity, making it tough for newcomers to contribute. And, not
-gonna lie… a lot of them are still written in Java and rely on legacy APIs.
+Most Android launchers are just AOSP Launcher3 forks. I wanted to build from scratch, make it easy for new developers to contribute, and follow solid coding practices to keep it sustainable. Open-source Launcher3 forks often get abandoned due to complexity, many still use Java and legacy APIs. Closed-source launchers are locking features behind paywalls and adding trackers. My goal is to offer powerful features with no compromises on privacy.
 
-Meanwhile, many closed-source launchers are starting to get greedy—locking features behind paywalls
-and sneaking in trackers. My goal is to give everyone the joy of using powerful features without
-compromising privacy.
+**YAGNI ("You Aren't Gonna Need It")** is a principle which arose from extreme programming (XP) that states a programmer should not add functionality until deemed necessary.
 
 ## Screenshots
 
@@ -55,6 +45,6 @@ compromising privacy.
 
 ## License
 
-**Einstein Launcher** is licensed under the GNU General Public License v3.0. See the [license](LICENSE)
+**Yagni Launcher** is licensed under the GNU General Public License v3.0. See the [license](LICENSE)
 for more
 information.

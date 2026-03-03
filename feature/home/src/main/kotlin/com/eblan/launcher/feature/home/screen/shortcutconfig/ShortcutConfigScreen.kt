@@ -40,25 +40,27 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DockedSearchBar
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -68,12 +70,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -82,7 +84,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -92,20 +93,25 @@ import androidx.compose.ui.unit.round
 import coil3.compose.AsyncImage
 import com.eblan.launcher.designsystem.icon.EblanLauncherIcons
 import com.eblan.launcher.domain.model.Associate
+import com.eblan.launcher.domain.model.EblanAction
+import com.eblan.launcher.domain.model.EblanActionType
 import com.eblan.launcher.domain.model.EblanApplicationInfoGroup
 import com.eblan.launcher.domain.model.EblanShortcutConfig
+import com.eblan.launcher.domain.model.EblanUser
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemData
 import com.eblan.launcher.domain.model.GridItemSettings
 import com.eblan.launcher.feature.home.component.scroll.OffsetNestedScrollConnection
 import com.eblan.launcher.feature.home.component.scroll.OffsetOverscrollEffect
 import com.eblan.launcher.feature.home.model.Drag
-import com.eblan.launcher.feature.home.model.EblanApplicationComponentUiState
 import com.eblan.launcher.feature.home.model.GridItemSource
 import com.eblan.launcher.feature.home.model.Screen
 import com.eblan.launcher.feature.home.model.SharedElementKey
-import com.eblan.launcher.feature.home.screen.loading.LoadingScreen
 import com.eblan.launcher.feature.home.screen.pager.handleApplyFling
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.uuid.ExperimentalUuidApi
@@ -116,13 +122,14 @@ import kotlin.uuid.Uuid
 internal fun SharedTransitionScope.ShortcutConfigScreen(
     modifier: Modifier = Modifier,
     currentPage: Int,
-    eblanApplicationComponentUiState: EblanApplicationComponentUiState,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
     paddingValues: PaddingValues,
     drag: Drag,
     gridItemSettings: GridItemSettings,
-    eblanShortcutConfigsByLabel: Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>,
     screenHeight: Int,
     isPressHome: Boolean,
+    screen: Screen,
+    gridItems: List<GridItem>,
     onLongPressGridItem: (
         gridItemSource: GridItemSource,
         imageBitmap: ImageBitmap?,
@@ -133,7 +140,10 @@ internal fun SharedTransitionScope.ShortcutConfigScreen(
     ) -> Unit,
     onGetEblanShortcutConfigsByLabel: (String) -> Unit,
     onDismiss: () -> Unit,
-    onDraggingGridItem: () -> Unit,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -163,21 +173,6 @@ internal fun SharedTransitionScope.ShortcutConfigScreen(
         )
     }
 
-    LaunchedEffect(key1 = isPressHome) {
-        if (isPressHome) {
-            scope.launch {
-                offsetY.animateTo(
-                    targetValue = screenHeight.toFloat(),
-                    animationSpec = tween(
-                        easing = FastOutSlowInEasing,
-                    ),
-                )
-
-                onDismiss()
-            }
-        }
-    }
-
     BackHandler {
         scope.launch {
             offsetY.animateTo(
@@ -200,47 +195,53 @@ internal fun SharedTransitionScope.ShortcutConfigScreen(
             .clip(RoundedCornerShape(cornerSize))
             .alpha(alpha),
     ) {
-        when (eblanApplicationComponentUiState) {
-            EblanApplicationComponentUiState.Loading -> {
-                LoadingScreen()
-            }
+        Success(
+            modifier = modifier,
+            currentPage = currentPage,
+            paddingValues = paddingValues,
+            drag = drag,
+            gridItemSettings = gridItemSettings,
+            eblanShortcutConfigs = eblanShortcutConfigs,
+            screen = screen,
+            gridItems = gridItems,
+            isPressHome = isPressHome,
+            onLongPressGridItem = onLongPressGridItem,
+            onUpdateGridItemOffset = onUpdateGridItemOffset,
+            onGetEblanShortcutConfigsByLabel = onGetEblanShortcutConfigsByLabel,
+            onDraggingGridItem = onDraggingGridItem,
+            onVerticalDrag = { dragAmount ->
+                scope.launch {
+                    offsetY.snapTo(offsetY.value + dragAmount)
+                }
+            },
+            onDragEnd = { remaining ->
+                scope.launch {
+                    handleApplyFling(
+                        offsetY = offsetY,
+                        remaining = remaining,
+                        screenHeight = screenHeight,
+                        onDismiss = onDismiss,
+                    )
+                }
+            },
+            onUpdateSharedElementKey = onUpdateSharedElementKey,
+            onDismiss = {
+                scope.launch {
+                    offsetY.animateTo(
+                        targetValue = screenHeight.toFloat(),
+                        animationSpec = tween(
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
 
-            is EblanApplicationComponentUiState.Success -> {
-                Success(
-                    modifier = modifier,
-                    currentPage = currentPage,
-                    paddingValues = paddingValues,
-                    drag = drag,
-                    gridItemSettings = gridItemSettings,
-                    eblanShortcutConfigsByLabel = eblanShortcutConfigsByLabel,
-                    eblanShortcutConfigs = eblanApplicationComponentUiState.eblanApplicationComponent.eblanShortcutConfigs,
-                    onLongPressGridItem = onLongPressGridItem,
-                    onUpdateGridItemOffset = onUpdateGridItemOffset,
-                    onGetEblanShortcutConfigsByLabel = onGetEblanShortcutConfigsByLabel,
-                    onDraggingGridItem = onDraggingGridItem,
-                    onVerticalDrag = { dragAmount ->
-                        scope.launch {
-                            offsetY.snapTo(offsetY.value + dragAmount)
-                        }
-                    },
-                    onDragEnd = { remaining ->
-                        scope.launch {
-                            handleApplyFling(
-                                offsetY = offsetY,
-                                remaining = remaining,
-                                screenHeight = screenHeight,
-                                onDismiss = onDismiss,
-                            )
-                        }
-                    },
-                    onUpdateSharedElementKey = onUpdateSharedElementKey,
-                )
-            }
-        }
+                    onDismiss()
+                }
+            },
+        )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class, FlowPreview::class)
 @Composable
 private fun SharedTransitionScope.Success(
     modifier: Modifier = Modifier,
@@ -248,8 +249,10 @@ private fun SharedTransitionScope.Success(
     paddingValues: PaddingValues,
     drag: Drag,
     gridItemSettings: GridItemSettings,
-    eblanShortcutConfigsByLabel: Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>,
-    eblanShortcutConfigs: Map<Long, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    screen: Screen,
+    gridItems: List<GridItem>,
+    isPressHome: Boolean,
     onLongPressGridItem: (
         gridItemSource: GridItemSource,
         imageBitmap: ImageBitmap?,
@@ -259,18 +262,50 @@ private fun SharedTransitionScope.Success(
         intSize: IntSize,
     ) -> Unit,
     onGetEblanShortcutConfigsByLabel: (String) -> Unit,
-    onDraggingGridItem: () -> Unit,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onVerticalDrag: (Float) -> Unit,
     onDragEnd: (Float) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    val focusManager = LocalFocusManager.current
-
     val horizontalPagerState = rememberPagerState(
         pageCount = {
             eblanShortcutConfigs.keys.size
         },
     )
+
+    val searchBarState = rememberSearchBarState()
+
+    val textFieldState = rememberTextFieldState()
+
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(key1 = textFieldState) {
+        snapshotFlow { textFieldState.text }
+            .debounce(500L)
+            .onEach { text ->
+                onGetEblanShortcutConfigsByLabel(text.toString())
+            }.collect()
+    }
+
+    LaunchedEffect(key1 = isPressHome) {
+        if (isPressHome) {
+            onDismiss()
+        }
+
+        if (isPressHome && searchBarState.currentValue == SearchBarValue.Expanded) {
+            searchBarState.animateToCollapsed()
+        }
+    }
+
+    LaunchedEffect(key1 = drag) {
+        if (drag == Drag.Start && searchBarState.currentValue == SearchBarValue.Expanded) {
+            searchBarState.animateToCollapsed()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -281,21 +316,25 @@ private fun SharedTransitionScope.Success(
                 end = paddingValues.calculateEndPadding(LayoutDirection.Ltr),
             ),
     ) {
-        EblanShortcutConfigDockSearchBar(
-            modifier = modifier,
-            onQueryChange = onGetEblanShortcutConfigsByLabel,
-            eblanShortcutConfigsByLabel = eblanShortcutConfigsByLabel,
-            drag = drag,
-            onUpdateGridItemOffset = { intOffset, intSize ->
-                onUpdateGridItemOffset(intOffset, intSize)
-
-                focusManager.clearFocus()
+        SearchBar(
+            state = searchBarState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            inputField = {
+                SearchBarDefaults.InputField(
+                    textFieldState = textFieldState,
+                    searchBarState = searchBarState,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = EblanLauncherIcons.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    onSearch = { scope.launch { searchBarState.animateToCollapsed() } },
+                    placeholder = { Text(text = "Search Applications") },
+                )
             },
-            onLongPressGridItem = onLongPressGridItem,
-            currentPage = currentPage,
-            gridItemSettings = gridItemSettings,
-            onDraggingGridItem = onDraggingGridItem,
-            onUpdateSharedElementKey = onUpdateSharedElementKey,
         )
 
         if (eblanShortcutConfigs.keys.size > 1) {
@@ -316,6 +355,8 @@ private fun SharedTransitionScope.Success(
                     drag = drag,
                     gridItemSettings = gridItemSettings,
                     eblanShortcutConfigs = eblanShortcutConfigs,
+                    screen = screen,
+                    gridItems = gridItems,
                     onLongPressGridItem = onLongPressGridItem,
                     onUpdateGridItemOffset = onUpdateGridItemOffset,
                     onDraggingGridItem = onDraggingGridItem,
@@ -332,6 +373,8 @@ private fun SharedTransitionScope.Success(
                 drag = drag,
                 gridItemSettings = gridItemSettings,
                 eblanShortcutConfigs = eblanShortcutConfigs,
+                screen = screen,
+                gridItems = gridItems,
                 onLongPressGridItem = onLongPressGridItem,
                 onUpdateGridItemOffset = onUpdateGridItemOffset,
                 onDraggingGridItem = onDraggingGridItem,
@@ -343,83 +386,17 @@ private fun SharedTransitionScope.Success(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
-@Composable
-private fun SharedTransitionScope.EblanShortcutConfigDockSearchBar(
-    modifier: Modifier = Modifier,
-    onQueryChange: (String) -> Unit,
-    eblanShortcutConfigsByLabel: Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>,
-    drag: Drag,
-    onUpdateGridItemOffset: (
-        intOffset: IntOffset,
-        intSize: IntSize,
-    ) -> Unit,
-    onLongPressGridItem: (
-        gridItemSource: GridItemSource,
-        imageBitmap: ImageBitmap?,
-    ) -> Unit,
-    currentPage: Int,
-    gridItemSettings: GridItemSettings,
-    onDraggingGridItem: () -> Unit,
-    onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
-) {
-    var query by remember { mutableStateOf("") }
-
-    var expanded by remember { mutableStateOf(false) }
-
-    DockedSearchBar(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(10.dp),
-        inputField = {
-            SearchBarDefaults.InputField(
-                modifier = Modifier.fillMaxWidth(),
-                query = query,
-                onQueryChange = { newQuery ->
-                    query = newQuery
-
-                    onQueryChange(newQuery)
-                },
-                onSearch = { expanded = false },
-                expanded = expanded,
-                onExpandedChange = { expanded = it },
-                placeholder = { Text("Search Shortcuts") },
-                leadingIcon = { Icon(EblanLauncherIcons.Search, contentDescription = null) },
-            )
-        },
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(eblanShortcutConfigsByLabel.keys.toList()) { eblanApplicationInfoGroup ->
-                EblanApplicationInfoItem(
-                    modifier = modifier,
-                    eblanApplicationInfoGroup = eblanApplicationInfoGroup,
-                    eblanShortcutConfigs = eblanShortcutConfigsByLabel,
-                    drag = drag,
-                    onUpdateGridItemOffset = onUpdateGridItemOffset,
-                    onLongPressGridItem = onLongPressGridItem,
-                    currentPage = currentPage,
-                    gridItemSettings = gridItemSettings,
-                    onDraggingGridItem = onDraggingGridItem,
-                    onUpdateSharedElementKey = onUpdateSharedElementKey,
-                )
-            }
-        }
-    }
-}
-
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun EblanShortcutConfigTabRow(
     currentPage: Int,
-    eblanShortcutConfigs: Map<Long, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
     onAnimateScrollToPage: suspend (Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
 
     SecondaryTabRow(selectedTabIndex = currentPage) {
-        eblanShortcutConfigs.keys.forEachIndexed { index, serialNumber ->
+        eblanShortcutConfigs.keys.forEachIndexed { index, eblanUser ->
             Tab(
                 selected = currentPage == index,
                 onClick = {
@@ -429,7 +406,7 @@ private fun EblanShortcutConfigTabRow(
                 },
                 text = {
                     Text(
-                        text = "User $serialNumber",
+                        text = eblanUser.eblanUserType.name,
                         maxLines = 1,
                     )
                 },
@@ -447,13 +424,18 @@ private fun SharedTransitionScope.EblanShortcutConfigsPage(
     paddingValues: PaddingValues,
     drag: Drag,
     gridItemSettings: GridItemSettings,
-    eblanShortcutConfigs: Map<Long, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    eblanShortcutConfigs: Map<EblanUser, Map<EblanApplicationInfoGroup, List<EblanShortcutConfig>>>,
+    screen: Screen,
+    gridItems: List<GridItem>,
     onLongPressGridItem: (
         gridItemSource: GridItemSource,
         imageBitmap: ImageBitmap?,
     ) -> Unit,
     onUpdateGridItemOffset: (IntOffset, IntSize) -> Unit,
-    onDraggingGridItem: () -> Unit,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onVerticalDrag: (Float) -> Unit,
     onDragEnd: (Float) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
@@ -530,6 +512,8 @@ private fun SharedTransitionScope.EblanShortcutConfigsPage(
                         onLongPressGridItem = onLongPressGridItem,
                         currentPage = currentPage,
                         gridItemSettings = gridItemSettings,
+                        screen = screen,
+                        gridItems = gridItems,
                         onDraggingGridItem = onDraggingGridItem,
                         onUpdateSharedElementKey = onUpdateSharedElementKey,
                     )
@@ -556,7 +540,12 @@ private fun SharedTransitionScope.EblanApplicationInfoItem(
     ) -> Unit,
     currentPage: Int,
     gridItemSettings: GridItemSettings,
-    onDraggingGridItem: () -> Unit,
+    screen: Screen,
+    gridItems: List<GridItem>,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -602,22 +591,19 @@ private fun SharedTransitionScope.EblanApplicationInfoItem(
         if (expanded) {
             Spacer(modifier = Modifier.height(10.dp))
 
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                items(eblanShortcutConfigs[eblanApplicationInfoGroup].orEmpty()) { eblanShortcutConfig ->
-                    EblanShortcutConfigItem(
-                        eblanShortcutConfig = eblanShortcutConfig,
-                        drag = drag,
-                        onUpdateGridItemOffset = onUpdateGridItemOffset,
-                        onLongPressGridItem = onLongPressGridItem,
-                        currentPage = currentPage,
-                        gridItemSettings = gridItemSettings,
-                        onDraggingGridItem = onDraggingGridItem,
-                        onUpdateSharedElementKey = onUpdateSharedElementKey,
-                    )
-                }
+            eblanShortcutConfigs[eblanApplicationInfoGroup]?.forEach { eblanShortcutConfig ->
+                EblanShortcutConfigItem(
+                    eblanShortcutConfig = eblanShortcutConfig,
+                    drag = drag,
+                    onUpdateGridItemOffset = onUpdateGridItemOffset,
+                    onLongPressGridItem = onLongPressGridItem,
+                    currentPage = currentPage,
+                    gridItemSettings = gridItemSettings,
+                    screen = screen,
+                    gridItems = gridItems,
+                    onDraggingGridItem = onDraggingGridItem,
+                    onUpdateSharedElementKey = onUpdateSharedElementKey,
+                )
             }
         }
     }
@@ -629,6 +615,8 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
     modifier: Modifier = Modifier,
     eblanShortcutConfig: EblanShortcutConfig,
     drag: Drag,
+    screen: Screen,
+    gridItems: List<GridItem>,
     onUpdateGridItemOffset: (
         intOffset: IntOffset,
         intSize: IntSize,
@@ -639,7 +627,10 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
     ) -> Unit,
     currentPage: Int,
     gridItemSettings: GridItemSettings,
-    onDraggingGridItem: () -> Unit,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -650,37 +641,27 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
 
     val graphicsLayer = rememberGraphicsLayer()
 
-    val scale = remember { Animatable(1f) }
-
     var isLongPress by remember { mutableStateOf(false) }
 
-    val isDragging = isLongPress && (drag == Drag.Start || drag == Drag.Dragging)
+    val isDragging by remember(key1 = drag) {
+        derivedStateOf {
+            isLongPress && (drag == Drag.Start || drag == Drag.Dragging)
+        }
+    }
 
     val id = remember { Uuid.random().toHexString() }
 
     LaunchedEffect(key1 = drag) {
         when (drag) {
-            Drag.Dragging -> {
-                if (isLongPress) {
-                    onUpdateSharedElementKey(
-                        SharedElementKey(
-                            id = id,
-                            screen = Screen.Drag,
-                        ),
-                    )
-
-                    onDraggingGridItem()
-                }
+            Drag.Dragging if isLongPress -> {
+                onDraggingGridItem(
+                    Screen.Drag,
+                    gridItems,
+                )
             }
 
             Drag.End, Drag.Cancel -> {
                 isLongPress = false
-
-                scale.stop()
-
-                if (scale.value < 1f) {
-                    scale.animateTo(1f)
-                }
             }
 
             else -> Unit
@@ -693,10 +674,6 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                 detectTapGestures(
                     onLongPress = {
                         scope.launch {
-                            scale.animateTo(0.5f)
-
-                            scale.animateTo(1f)
-
                             val data = GridItemData.ShortcutConfig(
                                 serialNumber = eblanShortcutConfig.serialNumber,
                                 componentName = eblanShortcutConfig.componentName,
@@ -716,7 +693,6 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                                 GridItemSource.New(
                                     gridItem = GridItem(
                                         id = id,
-                                        folderId = null,
                                         page = currentPage,
                                         startColumn = -1,
                                         startRow = -1,
@@ -726,6 +702,21 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                                         associate = Associate.Grid,
                                         override = false,
                                         gridItemSettings = gridItemSettings,
+                                        doubleTap = EblanAction(
+                                            eblanActionType = EblanActionType.None,
+                                            serialNumber = 0L,
+                                            componentName = "",
+                                        ),
+                                        swipeUp = EblanAction(
+                                            eblanActionType = EblanActionType.None,
+                                            serialNumber = 0L,
+                                            componentName = "",
+                                        ),
+                                        swipeDown = EblanAction(
+                                            eblanActionType = EblanActionType.None,
+                                            serialNumber = 0L,
+                                            componentName = "",
+                                        ),
                                     ),
                                 ),
                                 graphicsLayer.toImageBitmap(),
@@ -739,39 +730,22 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                             onUpdateSharedElementKey(
                                 SharedElementKey(
                                     id = id,
-                                    screen = Screen.Pager,
+                                    screen = screen,
                                 ),
                             )
 
                             isLongPress = true
                         }
                     },
-                    onPress = {
-                        awaitRelease()
-
-                        scale.stop()
-
-                        isLongPress = false
-
-                        if (scale.value < 1f) {
-                            scale.animateTo(1f)
-                        }
-                    },
                 )
             }
-            .size(100.dp)
-            .padding(10.dp)
-            .scale(
-                scaleX = scale.value,
-                scaleY = scale.value,
-            ),
+            .fillMaxWidth()
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        if (!isDragging) {
-            Box(
-                modifier = Modifier.size(gridItemSettings.iconSize.dp),
-            ) {
+        Box(modifier = Modifier.size(gridItemSettings.iconSize.dp)) {
+            if (!isDragging) {
                 AsyncImage(
                     model = eblanShortcutConfig.activityIcon,
                     contentDescription = null,
@@ -780,10 +754,10 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                             rememberSharedContentState(
                                 key = SharedElementKey(
                                     id = id,
-                                    screen = Screen.Pager,
+                                    screen = screen,
                                 ),
                             ),
-                            visible = true,
+                            visible = drag == Drag.Cancel || drag == Drag.End,
                         )
                         .drawWithContent {
                             graphicsLayer.record {
@@ -814,14 +788,21 @@ private fun SharedTransitionScope.EblanShortcutConfigItem(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = eblanShortcutConfig.activityLabel.toString(),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            modifier = Modifier.alpha(
+                if (isDragging) {
+                    0f
+                } else {
+                    1f
+                },
+            ),
+            text = eblanShortcutConfig.activityLabel.toString(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }

@@ -17,7 +17,7 @@
  */
 package com.eblan.launcher.feature.home.model
 
-internal enum class PageDirection {
+enum class PageDirection {
     Left,
     Right,
 }

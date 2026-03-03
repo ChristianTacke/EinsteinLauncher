@@ -65,17 +65,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.eblan.launcher.domain.framework.FileManager
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.ui.local.LocalAppWidgetHost
 import com.eblan.launcher.ui.local.LocalAppWidgetManager
-import com.eblan.launcher.ui.local.LocalByteArray
+import com.eblan.launcher.ui.local.LocalFileManager
+import com.eblan.launcher.ui.local.LocalImageSerializer
 import com.eblan.launcher.ui.local.LocalLauncherApps
 import com.eblan.launcher.ui.local.LocalPinItemRequest
 import com.eblan.launcher.ui.local.LocalUserManager
 import kotlinx.coroutines.launch
+import java.io.File
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -141,8 +144,7 @@ private fun PinShortcutScreen(
         shortLabel: String,
         longLabel: String,
         isEnabled: Boolean,
-        disabledMessage: String?,
-        byteArray: ByteArray?,
+        icon: String?,
     ) -> Unit,
     onDeleteShortcutGridItem: (GridItem) -> Unit,
     onUpdateGridItems: () -> Unit,
@@ -151,11 +153,13 @@ private fun PinShortcutScreen(
 
     val launcherApps = LocalLauncherApps.current
 
-    val byteArrayWrapper = LocalByteArray.current
+    val imageSerializer = LocalImageSerializer.current
 
     val shortcutInfo = pinItemRequest.shortcutInfo
 
     val userManager = LocalUserManager.current
+
+    val fileManager = LocalFileManager.current
 
     val context = LocalContext.current
 
@@ -206,6 +210,26 @@ private fun PinShortcutScreen(
                     icon = icon,
                     onAdd = {
                         scope.launch {
+                            val icon = launcherApps.getShortcutIconDrawable(
+                                shortcutInfo = shortcutInfo,
+                                density = 0,
+                            )?.let { drawable ->
+                                val directory =
+                                    fileManager.getFilesDirectory(FileManager.SHORTCUTS_DIR)
+
+                                val file = File(
+                                    directory,
+                                    fileManager.getHashedFileName(name = shortcutInfo.id),
+                                )
+
+                                imageSerializer.createDrawablePath(
+                                    drawable = drawable,
+                                    file = file,
+                                )
+
+                                file.absolutePath
+                            }
+
                             onAddPinShortcutToHomeScreen(
                                 userManager.getSerialNumberForUser(userHandle = shortcutInfo.userHandle),
                                 shortcutInfo.id,
@@ -213,10 +237,7 @@ private fun PinShortcutScreen(
                                 shortcutInfo.shortLabel.toString(),
                                 shortcutInfo.longLabel.toString(),
                                 shortcutInfo.isEnabled,
-                                shortcutInfo.disabledMessage?.toString(),
-                                icon?.let {
-                                    byteArrayWrapper.createByteArray(drawable = it)
-                                },
+                                icon,
                             )
                         }
                     },
@@ -262,6 +283,7 @@ private fun PinWidgetScreen(
         maxResizeHeight: Int,
         rootWidth: Int,
         rootHeight: Int,
+        preview: String?,
     ) -> Unit,
     onDeleteGridItemCache: (GridItem) -> Unit,
     onUpdateGridItemCache: (GridItem) -> Unit,
@@ -276,6 +298,8 @@ private fun PinWidgetScreen(
     val userManager = LocalUserManager.current
 
     val context = LocalContext.current
+
+    val fileManager = LocalFileManager.current
 
     val paddingValues = WindowInsets.safeDrawing.asPaddingValues()
 
@@ -359,10 +383,22 @@ private fun PinWidgetScreen(
                 label = appWidgetProviderInfo.loadLabel(context.packageManager),
                 icon = icon,
                 onAdd = {
+                    val componentName = appWidgetProviderInfo.provider.flattenToString()
+
+                    val directory =
+                        fileManager.getFilesDirectory(FileManager.WIDGETS_DIR)
+
+                    val file = File(
+                        directory,
+                        fileManager.getHashedFileName(name = componentName),
+                    )
+
+                    val preview = file.absolutePath
+
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         onAddPinWidgetToHomeScreen(
                             userManager.getSerialNumberForUser(userHandle = appWidgetProviderInfo.profile),
-                            appWidgetProviderInfo.provider.flattenToString(),
+                            componentName,
                             appWidgetProviderInfo.configure.flattenToString(),
                             appWidgetProviderInfo.provider.packageName,
                             appWidgetProviderInfo.targetCellHeight,
@@ -376,6 +412,7 @@ private fun PinWidgetScreen(
                             appWidgetProviderInfo.maxResizeHeight,
                             this@BoxWithConstraints.constraints.maxWidth,
                             this@BoxWithConstraints.constraints.maxHeight,
+                            preview,
                         )
                     } else {
                         onAddPinWidgetToHomeScreen(
@@ -394,6 +431,7 @@ private fun PinWidgetScreen(
                             0,
                             constraints.maxWidth,
                             constraints.maxHeight,
+                            preview,
                         )
                     }
                 },

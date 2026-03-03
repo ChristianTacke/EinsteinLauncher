@@ -27,8 +27,9 @@ data class HomeSettings(
     val dockHeight: Int,
     val initialPage: Int,
     val wallpaperScroll: Boolean,
-    val folderColumns: Int,
-    val folderRows: Int,
     val gridItemSettings: GridItemSettings,
     val lockScreenOrientation: Boolean,
+    val dockPageCount: Int,
+    val dockInfiniteScroll: Boolean,
+    val dockInitialPage: Int,
 )

@@ -41,30 +41,46 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
 import coil3.compose.AsyncImage
 import com.eblan.launcher.domain.model.EblanAppWidgetProviderInfo
 import com.eblan.launcher.domain.model.EblanApplicationInfoGroup
+import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemSettings
 import com.eblan.launcher.feature.home.model.Drag
 import com.eblan.launcher.feature.home.model.GridItemSource
+import com.eblan.launcher.feature.home.model.Screen
 import com.eblan.launcher.feature.home.model.SharedElementKey
 import com.eblan.launcher.feature.home.screen.pager.handleApplyFling
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -72,12 +88,17 @@ internal fun SharedTransitionScope.AppWidgetScreen(
     modifier: Modifier = Modifier,
     currentPage: Int,
     eblanApplicationInfoGroup: EblanApplicationInfoGroup?,
-    eblanAppWidgetProviderInfos: Map<String, List<EblanAppWidgetProviderInfo>>,
+    eblanAppWidgetProviderInfosGroup: Map<String, List<EblanAppWidgetProviderInfo>>,
     gridItemSettings: GridItemSettings,
     paddingValues: PaddingValues,
     drag: Drag,
-    screenHeight: Int,
     isPressHome: Boolean,
+    screen: Screen,
+    gridItems: List<GridItem>,
+    screenWidth: Int,
+    screenHeight: Int,
+    columns: Int,
+    rows: Int,
     onLongPressGridItem: (
         gridItemSource: GridItemSource,
         imageBitmap: ImageBitmap?,
@@ -87,7 +108,10 @@ internal fun SharedTransitionScope.AppWidgetScreen(
         intSize: IntSize,
     ) -> Unit,
     onDismiss: () -> Unit,
-    onDraggingGridItem: () -> Unit,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -137,18 +161,20 @@ internal fun SharedTransitionScope.AppWidgetScreen(
                 IntOffset(x = 0, y = offsetY.value.roundToInt())
             }
             .pointerInput(key1 = Unit) {
-                detectTapGestures(onTap = {
-                    scope.launch {
-                        offsetY.animateTo(
-                            targetValue = screenHeight.toFloat(),
-                            animationSpec = tween(
-                                easing = FastOutSlowInEasing,
-                            ),
-                        )
+                detectTapGestures(
+                    onTap = {
+                        scope.launch {
+                            offsetY.animateTo(
+                                targetValue = screenHeight.toFloat(),
+                                animationSpec = tween(
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
 
-                        onDismiss()
-                    }
-                })
+                            onDismiss()
+                        }
+                    },
+                )
             }
             .fillMaxSize(),
         contentAlignment = Alignment.BottomCenter,
@@ -195,12 +221,18 @@ internal fun SharedTransitionScope.AppWidgetScreen(
                         .fillMaxWidth()
                         .padding(paddingValues),
                     eblanApplicationInfoGroup = eblanApplicationInfoGroup,
-                    eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfos[eblanApplicationInfoGroup.packageName].orEmpty(),
+                    eblanAppWidgetProviderInfos = eblanAppWidgetProviderInfosGroup[eblanApplicationInfoGroup.packageName].orEmpty(),
                     drag = drag,
                     onUpdateGridItemOffset = onUpdateGridItemOffset,
                     onLongPressGridItem = onLongPressGridItem,
                     currentPage = currentPage,
                     gridItemSettings = gridItemSettings,
+                    screen = screen,
+                    gridItems = gridItems,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight,
+                    columns = columns,
+                    rows = rows,
                     onDraggingGridItem = onDraggingGridItem,
                     onUpdateSharedElementKey = onUpdateSharedElementKey,
                 )
@@ -220,7 +252,16 @@ private fun SharedTransitionScope.Success(
     onLongPressGridItem: (GridItemSource, ImageBitmap?) -> Unit,
     currentPage: Int,
     gridItemSettings: GridItemSettings,
-    onDraggingGridItem: () -> Unit,
+    screen: Screen,
+    gridItems: List<GridItem>,
+    screenWidth: Int,
+    screenHeight: Int,
+    columns: Int,
+    rows: Int,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
     onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
 ) {
     val lazyListState = rememberLazyListState()
@@ -250,14 +291,218 @@ private fun SharedTransitionScope.Success(
                 EblanAppWidgetProviderInfoItem(
                     eblanAppWidgetProviderInfo = eblanAppWidgetProviderInfo,
                     drag = drag,
-                    onUpdateGridItemOffset = onUpdateGridItemOffset,
-                    onLongPressGridItem = onLongPressGridItem,
                     currentPage = currentPage,
                     gridItemSettings = gridItemSettings,
+                    screen = screen,
+                    gridItems = gridItems,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight,
+                    columns = columns,
+                    rows = rows,
                     onDraggingGridItem = onDraggingGridItem,
                     onUpdateSharedElementKey = onUpdateSharedElementKey,
+                    onUpdateGridItemOffset = onUpdateGridItemOffset,
+                    onLongPressGridItem = onLongPressGridItem,
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalUuidApi::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun SharedTransitionScope.EblanAppWidgetProviderInfoItem(
+    modifier: Modifier = Modifier,
+    eblanAppWidgetProviderInfo: EblanAppWidgetProviderInfo,
+    drag: Drag,
+    screen: Screen,
+    gridItems: List<GridItem>,
+    screenWidth: Int,
+    screenHeight: Int,
+    columns: Int,
+    rows: Int,
+    onUpdateGridItemOffset: (
+        intOffset: IntOffset,
+        intSize: IntSize,
+    ) -> Unit,
+    onLongPressGridItem: (
+        gridItemSource: GridItemSource,
+        imageBitmap: ImageBitmap?,
+    ) -> Unit,
+    currentPage: Int,
+    gridItemSettings: GridItemSettings,
+    onDraggingGridItem: (
+        screen: Screen,
+        gridItems: List<GridItem>,
+    ) -> Unit,
+    onUpdateSharedElementKey: (SharedElementKey?) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+
+    var intOffset by remember { mutableStateOf(IntOffset.Zero) }
+
+    var intSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val preview = eblanAppWidgetProviderInfo.preview ?: eblanAppWidgetProviderInfo.applicationIcon
+
+    val graphicsLayer = rememberGraphicsLayer()
+
+    var isLongPress by remember { mutableStateOf(false) }
+
+    val isDragging by remember(key1 = drag) {
+        derivedStateOf {
+            isLongPress && (drag == Drag.Start || drag == Drag.Dragging)
+        }
+    }
+
+    val id = remember { Uuid.random().toHexString() }
+
+    LaunchedEffect(key1 = drag) {
+        when (drag) {
+            Drag.Dragging if isLongPress -> {
+                onDraggingGridItem(
+                    Screen.Drag,
+                    gridItems,
+                )
+            }
+
+            Drag.End, Drag.Cancel -> {
+                isLongPress = false
+            }
+
+            else -> Unit
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .pointerInput(key1 = drag) {
+                detectTapGestures(
+                    onLongPress = {
+                        scope.launch {
+                            onLongPressGridItem(
+                                GridItemSource.New(
+                                    gridItem = getWidgetGridItem(
+                                        id = id,
+                                        page = currentPage,
+                                        componentName = eblanAppWidgetProviderInfo.componentName,
+                                        configure = eblanAppWidgetProviderInfo.configure,
+                                        packageName = eblanAppWidgetProviderInfo.packageName,
+                                        serialNumber = eblanAppWidgetProviderInfo.serialNumber,
+                                        targetCellHeight = eblanAppWidgetProviderInfo.targetCellHeight,
+                                        targetCellWidth = eblanAppWidgetProviderInfo.targetCellWidth,
+                                        minWidth = eblanAppWidgetProviderInfo.minWidth,
+                                        minHeight = eblanAppWidgetProviderInfo.minHeight,
+                                        resizeMode = eblanAppWidgetProviderInfo.resizeMode,
+                                        minResizeWidth = eblanAppWidgetProviderInfo.minResizeWidth,
+                                        minResizeHeight = eblanAppWidgetProviderInfo.minResizeHeight,
+                                        maxResizeWidth = eblanAppWidgetProviderInfo.maxResizeWidth,
+                                        maxResizeHeight = eblanAppWidgetProviderInfo.maxResizeHeight,
+                                        preview = eblanAppWidgetProviderInfo.preview,
+                                        label = eblanAppWidgetProviderInfo.applicationLabel,
+                                        icon = eblanAppWidgetProviderInfo.applicationIcon,
+                                        gridItemSettings = gridItemSettings,
+                                    ),
+                                ),
+                                graphicsLayer.toImageBitmap(),
+                            )
+
+                            onUpdateGridItemOffset(
+                                intOffset,
+                                intSize,
+                            )
+
+                            onUpdateSharedElementKey(
+                                SharedElementKey(
+                                    id = id,
+                                    screen = screen,
+                                ),
+                            )
+
+                            isLongPress = true
+                        }
+                    },
+                )
+            }
+            .size(200.dp)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (!isDragging) {
+            val text =
+                if (eblanAppWidgetProviderInfo.targetCellWidth > 0 && eblanAppWidgetProviderInfo.targetCellHeight > 0) {
+                    "${eblanAppWidgetProviderInfo.targetCellWidth}x${eblanAppWidgetProviderInfo.targetCellHeight}"
+                } else if (eblanAppWidgetProviderInfo.minWidth > 0 && eblanAppWidgetProviderInfo.minHeight > 0) {
+                    val cellWidth = screenWidth / columns
+
+                    val cellHeight = screenHeight / rows
+
+                    val spanX = (eblanAppWidgetProviderInfo.minWidth + cellWidth - 1) / cellWidth
+
+                    val spanY = (eblanAppWidgetProviderInfo.minHeight + cellHeight - 1) / cellHeight
+
+                    "${spanX}x$spanY"
+                } else {
+                    null
+                }
+
+            eblanAppWidgetProviderInfo.label?.let { label ->
+                Text(
+                    text = label,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            eblanAppWidgetProviderInfo.description?.let { description ->
+                Text(
+                    text = description,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            if (text != null) {
+                Text(
+                    text = text,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            AsyncImage(
+                modifier = Modifier
+                    .sharedElementWithCallerManagedVisibility(
+                        rememberSharedContentState(
+                            key = SharedElementKey(
+                                id = id,
+                                screen = screen,
+                            ),
+                        ),
+                        visible = drag == Drag.Cancel || drag == Drag.End,
+                    )
+                    .drawWithContent {
+                        graphicsLayer.record {
+                            this@drawWithContent.drawContent()
+                        }
+
+                        drawLayer(graphicsLayer)
+                    }
+                    .onGloballyPositioned { layoutCoordinates ->
+                        intOffset = layoutCoordinates.positionInRoot().round()
+
+                        intSize = layoutCoordinates.size
+                    },
+                model = preview,
+                contentDescription = null,
+            )
         }
     }
 }

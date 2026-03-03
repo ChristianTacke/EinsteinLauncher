@@ -23,6 +23,8 @@ import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
 import com.eblan.launcher.data.room.entity.EblanApplicationInfoEntity
+import com.eblan.launcher.data.room.entity.EblanApplicationInfoTagEntity
+import com.eblan.launcher.domain.model.DeleteEblanApplicationInfo
 import com.eblan.launcher.domain.model.SyncEblanApplicationInfo
 import kotlinx.coroutines.flow.Flow
 
@@ -31,17 +33,17 @@ interface EblanApplicationInfoDao {
     @Query("SELECT * FROM EblanApplicationInfoEntity")
     fun getEblanApplicationInfoEntities(): Flow<List<EblanApplicationInfoEntity>>
 
-    @Upsert
-    suspend fun upsertEblanApplicationInfoEntities(entities: List<EblanApplicationInfoEntity>)
+    @Query("SELECT * FROM EblanApplicationInfoEntity")
+    fun getEblanApplicationInfoEntityList(): List<EblanApplicationInfoEntity>
+
+    @Update
+    suspend fun updateEblanApplicationInfoEntities(entities: List<EblanApplicationInfoEntity>)
 
     @Upsert
     suspend fun upsertEblanApplicationInfoEntity(entity: EblanApplicationInfoEntity)
 
-    @Query("SELECT * FROM EblanApplicationInfoEntity WHERE packageName = :packageName")
-    suspend fun getEblanApplicationInfoEntitiesByPackageName(packageName: String): List<EblanApplicationInfoEntity>
-
     @Query("DELETE FROM EblanApplicationInfoEntity WHERE serialNumber = :serialNumber AND packageName = :packageName")
-    suspend fun deleteEblanApplicationInfoEntity(
+    suspend fun deleteEblanApplicationInfoEntityByPackageName(
         serialNumber: Long,
         packageName: String,
     )
@@ -49,18 +51,51 @@ interface EblanApplicationInfoDao {
     @Delete
     suspend fun deleteEblanApplicationInfoEntities(entities: List<EblanApplicationInfoEntity>)
 
-    @Query("SELECT * FROM EblanApplicationInfoEntity WHERE serialNumber = :serialNumber AND packageName = :packageName")
-    suspend fun getEblanApplicationInfoEntity(
-        serialNumber: Long,
-        packageName: String,
-    ): EblanApplicationInfoEntity?
-
     @Upsert(entity = EblanApplicationInfoEntity::class)
     suspend fun upsertSyncEblanApplicationInfoEntities(syncEblanApplicationInfos: List<SyncEblanApplicationInfo>)
 
     @Delete(entity = EblanApplicationInfoEntity::class)
-    suspend fun deleteSyncEblanApplicationInfoEntities(syncEblanApplicationInfos: List<SyncEblanApplicationInfo>)
+    suspend fun deleteSyncEblanApplicationInfoEntities(deleteEblanApplicationInfos: List<DeleteEblanApplicationInfo>)
 
     @Update
     suspend fun updateEblanApplicationInfoEntity(entity: EblanApplicationInfoEntity)
+
+    @Query("SELECT * FROM EblanApplicationInfoEntity WHERE serialNumber = :serialNumber AND componentName = :componentName")
+    suspend fun getEblanApplicationInfoEntityByComponentName(
+        serialNumber: Long,
+        componentName: String,
+    ): EblanApplicationInfoEntity?
+
+    @Query("SELECT * FROM EblanApplicationInfoEntity WHERE serialNumber = :serialNumber AND packageName = :packageName")
+    suspend fun getEblanApplicationInfoEntitiesByPackageName(
+        serialNumber: Long,
+        packageName: String,
+    ): List<EblanApplicationInfoEntity>
+
+    @Query(
+        """
+    SELECT DISTINCT app.*
+    FROM EblanApplicationInfoEntity AS app
+    INNER JOIN EblanApplicationInfoTagCrossRefEntity AS ref
+        ON app.componentName = ref.componentName
+       AND app.serialNumber = ref.serialNumber
+    WHERE ref.id IN (:tagIds)
+    """,
+    )
+    fun getEblanApplicationInfoEntitiesByTagId(tagIds: List<Long>): Flow<List<EblanApplicationInfoEntity>>
+
+    @Query(
+        """
+        SELECT tag.*
+        FROM EblanApplicationInfoTagEntity AS tag
+        INNER JOIN EblanApplicationInfoTagCrossRefEntity AS ref
+            ON tag.id = ref.id
+        WHERE ref.componentName = :componentName
+          AND ref.serialNumber = :serialNumber
+    """,
+    )
+    fun getEblanApplicationInfoTagEntities(
+        serialNumber: Long,
+        componentName: String,
+    ): Flow<List<EblanApplicationInfoTagEntity>>
 }

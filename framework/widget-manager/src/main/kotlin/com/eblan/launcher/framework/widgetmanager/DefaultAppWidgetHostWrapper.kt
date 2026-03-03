@@ -17,16 +17,20 @@
  */
 package com.eblan.launcher.framework.widgetmanager
 
+import android.app.Activity
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.os.Bundle
 import com.eblan.launcher.domain.framework.AppWidgetHostWrapper
 import com.eblan.launcher.framework.widgetmanager.launcher3.LauncherAppWidgetHost
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 internal class DefaultAppWidgetHostWrapper @Inject constructor(@param:ApplicationContext private val context: Context) :
-    AppWidgetHostWrapper, AndroidAppWidgetHostWrapper {
+    AppWidgetHostWrapper,
+    AndroidAppWidgetHostWrapper {
     private val appWidgetHost = LauncherAppWidgetHost(context, 2814)
 
     override fun startListening() {
@@ -37,19 +41,32 @@ internal class DefaultAppWidgetHostWrapper @Inject constructor(@param:Applicatio
         appWidgetHost.stopListening()
     }
 
-    override fun allocateAppWidgetId(): Int {
-        return appWidgetHost.allocateAppWidgetId()
-    }
+    override fun allocateAppWidgetId(): Int = appWidgetHost.allocateAppWidgetId()
 
     @Suppress("DEPRECATION")
     override fun createView(
         appWidgetId: Int,
         appWidgetProviderInfo: AppWidgetProviderInfo,
-    ): AppWidgetHostView {
-        return appWidgetHost.createView(context, appWidgetId, appWidgetProviderInfo)
-    }
+    ): AppWidgetHostView = appWidgetHost.createView(context, appWidgetId, appWidgetProviderInfo)
 
     override fun deleteAppWidgetId(appWidgetId: Int) {
         appWidgetHost.deleteAppWidgetId(appWidgetId)
+    }
+
+    @Throws(ActivityNotFoundException::class)
+    override fun startAppWidgetConfigureActivityForResult(
+        activity: Activity,
+        appWidgetId: Int,
+        intentFlags: Int,
+        requestCode: Int,
+        bundle: Bundle?,
+    ) {
+        appWidgetHost.startAppWidgetConfigureActivityForResult(
+            activity,
+            appWidgetId,
+            intentFlags,
+            requestCode,
+            bundle,
+        )
     }
 }

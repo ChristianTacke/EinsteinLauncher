@@ -19,10 +19,10 @@ package com.eblan.launcher.domain.usecase.page
 
 import com.eblan.launcher.domain.common.dispatcher.Dispatcher
 import com.eblan.launcher.domain.common.dispatcher.EblanDispatchers
+import com.eblan.launcher.domain.model.Associate
 import com.eblan.launcher.domain.model.PageItem
+import com.eblan.launcher.domain.repository.GridRepository
 import com.eblan.launcher.domain.repository.UserDataRepository
-import com.eblan.launcher.domain.usecase.grid.DeleteGridItemsUseCase
-import com.eblan.launcher.domain.usecase.grid.UpdateGridItemsUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -30,38 +30,51 @@ import javax.inject.Inject
 
 class UpdatePageItemsUseCase @Inject constructor(
     private val userDataRepository: UserDataRepository,
-    private val updateGridItemsUseCase: UpdateGridItemsUseCase,
-    private val deleteGridItemsUseCase: DeleteGridItemsUseCase,
+    private val gridRepository: GridRepository,
     @param:Dispatcher(EblanDispatchers.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
     suspend operator fun invoke(
         id: Int,
         pageItems: List<PageItem>,
         pageItemsToDelete: List<PageItem>,
+        associate: Associate,
     ) {
         withContext(defaultDispatcher) {
             val homeSettings = userDataRepository.userData.first().homeSettings
 
             pageItemsToDelete.forEach { pageItem ->
-                deleteGridItemsUseCase(gridItems = pageItem.gridItems)
+                gridRepository.deleteGridItems(gridItems = pageItem.gridItems)
             }
 
-            val gridItems = pageItems.mapIndexed { index, pageItem ->
+            val gridItems = pageItems.flatMapIndexed { index, pageItem ->
                 pageItem.gridItems.map { gridItem ->
                     gridItem.copy(page = index)
                 }
-            }.flatten()
+            }
 
             val newInitialPage = pageItems.indexOfFirst { it.id == id }
 
-            userDataRepository.updateHomeSettings(
-                homeSettings = homeSettings.copy(
-                    pageCount = pageItems.size,
-                    initialPage = newInitialPage,
-                ),
-            )
+            when (associate) {
+                Associate.Grid -> {
+                    userDataRepository.updateHomeSettings(
+                        homeSettings = homeSettings.copy(
+                            pageCount = pageItems.size,
+                            initialPage = newInitialPage,
+                        ),
+                    )
+                }
 
-            updateGridItemsUseCase(gridItems = gridItems)
+                Associate.Dock -> {
+                    userDataRepository.updateHomeSettings(
+                        homeSettings = homeSettings.copy(
+                            dockPageCount = pageItems.size,
+                            dockInitialPage = newInitialPage,
+                        ),
+                    )
+                }
+            }
+
+            gridRepository.updateGridItems(gridItems = gridItems)
         }
     }
 }

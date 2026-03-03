@@ -12,6 +12,11 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -21,7 +26,7 @@ dependencyResolutionManagement {
 }
 
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
-rootProject.name = "EinsteinLauncher"
+rootProject.name = "YagniLauncher"
 include(":app")
 include(":common")
 include(":design-system")
@@ -42,14 +47,14 @@ include(":feature:home")
 include(":feature:pin")
 include(":feature:settings:app-drawer")
 include(":feature:settings:experimental")
-include(":feature:settings:folder")
 include(":feature:settings:general")
 include(":feature:settings:gestures")
 include(":feature:settings:home")
 include(":feature:settings:settings")
-include(":framework:byte-array")
+include(":framework:accessibility-manager")
 include(":framework:file-manager")
 include(":framework:icon-pack-manager")
+include(":framework:image-serializer")
 include(":framework:launcher-apps")
 include(":framework:notification-manager")
 include(":framework:package-manager")

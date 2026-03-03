@@ -19,7 +19,6 @@ package com.eblan.launcher.domain.model
 
 data class GridItem(
     val id: String,
-    val folderId: String?,
     val page: Int,
     val startColumn: Int,
     val startRow: Int,
@@ -29,6 +28,9 @@ data class GridItem(
     val associate: Associate,
     val override: Boolean,
     val gridItemSettings: GridItemSettings,
+    val doubleTap: EblanAction,
+    val swipeUp: EblanAction,
+    val swipeDown: EblanAction,
 )
 
 enum class Associate {

@@ -20,92 +20,65 @@ package com.eblan.launcher.data.repository.mapper
 import com.eblan.launcher.data.room.entity.FolderGridItemEntity
 import com.eblan.launcher.data.room.entity.FolderGridItemWrapperEntity
 import com.eblan.launcher.domain.model.FolderGridItem
+import com.eblan.launcher.domain.model.FolderGridItemWrapper
 import com.eblan.launcher.domain.model.GridItem
 import com.eblan.launcher.domain.model.GridItemData
 
-internal fun FolderGridItemWrapperEntity.asGridItem(): GridItem {
-    return GridItem(
-        id = folderGridItemEntity.id,
-        folderId = folderGridItemEntity.folderId,
-        page = folderGridItemEntity.page,
-        startColumn = folderGridItemEntity.startColumn,
-        startRow = folderGridItemEntity.startRow,
-        columnSpan = folderGridItemEntity.columnSpan,
-        rowSpan = folderGridItemEntity.rowSpan,
-        data = asFolderGridItemData(),
-        associate = folderGridItemEntity.associate,
-        override = folderGridItemEntity.override,
-        gridItemSettings = folderGridItemEntity.gridItemSettings,
-    )
-}
-
-internal fun FolderGridItemWrapperEntity.asFolderGridItemData(): GridItemData.Folder {
-    val applicationInfos = applicationInfos.map { applicationInfoGridItemEntity ->
-        applicationInfoGridItemEntity.asGridItem()
-    }
-
-    val widgets = widgets.map { widgetGridItemEntity ->
-        widgetGridItemEntity.asGridItem()
-    }
-
-    val shortcutInfos = shortcutInfos.map { shortcutGridItemEntity ->
-        shortcutGridItemEntity.asGridItem()
-    }
-
-    val folders = folders.map { folderGridItemEntity ->
-        folderGridItemEntity.asGridItem()
-    }
-
-    val shortcutConfigs = shortcutConfigs.map { shortcutConfigGridItemEntity ->
-        shortcutConfigGridItemEntity.asGridItem()
-    }
-
-    return GridItemData.Folder(
-        id = folderGridItemEntity.id,
-        label = folderGridItemEntity.label,
-        gridItems = applicationInfos + widgets + shortcutInfos + folders + shortcutConfigs,
-        pageCount = folderGridItemEntity.pageCount,
-        icon = folderGridItemEntity.icon,
-    )
-}
+internal fun FolderGridItemWrapperEntity.asFolderGridItemData(): FolderGridItemWrapper = FolderGridItemWrapper(
+    folderGridItem = folderGridItemEntity.asFolderGridItem(),
+    applicationInfoGridItems = applicationInfoGridItemEntities.map { applicationInfoGridItemEntity ->
+        applicationInfoGridItemEntity.asModel()
+    },
+)
 
 @JvmName("FolderGridItemEntity")
-internal fun FolderGridItemEntity.asGridItem(): GridItem {
-    return GridItem(
-        id = id,
-        folderId = folderId,
-        page = page,
-        startColumn = startColumn,
-        startRow = startRow,
-        columnSpan = columnSpan,
-        rowSpan = rowSpan,
-        data = GridItemData.Folder(
-            id = id,
-            label = label,
-            gridItems = emptyList(),
-            pageCount = pageCount,
-            icon = icon,
-        ),
-        associate = associate,
-        override = override,
-        gridItemSettings = gridItemSettings,
-    )
-}
+internal fun FolderGridItemEntity.asFolderGridItem(): FolderGridItem = FolderGridItem(
+    id = id,
+    page = page,
+    startColumn = startColumn,
+    startRow = startRow,
+    columnSpan = columnSpan,
+    rowSpan = rowSpan,
+    associate = associate,
+    label = label,
+    override = override,
+    icon = icon,
+    gridItemSettings = gridItemSettings,
+    doubleTap = doubleTap,
+    swipeUp = swipeUp,
+    swipeDown = swipeDown,
+)
 
-internal fun FolderGridItem.asEntity(): FolderGridItemEntity {
-    return FolderGridItemEntity(
-        id = id,
-        folderId = folderId,
-        page = page,
-        startColumn = startColumn,
-        startRow = startRow,
-        columnSpan = columnSpan,
-        rowSpan = rowSpan,
-        associate = associate,
-        label = label,
-        override = override,
-        pageCount = pageCount,
-        icon = icon,
-        gridItemSettings = gridItemSettings,
-    )
-}
+internal fun FolderGridItem.asEntity(): FolderGridItemEntity = FolderGridItemEntity(
+    id = id,
+    page = page,
+    startColumn = startColumn,
+    startRow = startRow,
+    columnSpan = columnSpan,
+    rowSpan = rowSpan,
+    associate = associate,
+    label = label,
+    override = override,
+    icon = icon,
+    gridItemSettings = gridItemSettings,
+    doubleTap = doubleTap,
+    swipeUp = swipeUp,
+    swipeDown = swipeDown,
+)
+
+internal fun GridItem.asFolderGridItem(data: GridItemData.Folder): FolderGridItem = FolderGridItem(
+    id = id,
+    page = page,
+    startColumn = startColumn,
+    startRow = startRow,
+    columnSpan = columnSpan,
+    rowSpan = rowSpan,
+    associate = associate,
+    label = data.label,
+    override = override,
+    icon = data.icon,
+    gridItemSettings = gridItemSettings,
+    doubleTap = doubleTap,
+    swipeUp = swipeUp,
+    swipeDown = swipeDown,
+)

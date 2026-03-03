@@ -28,9 +28,17 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-internal class DefaultApplicationInfoGridItemRepository @Inject constructor(private val applicationInfoGridItemDao: ApplicationInfoGridItemDao) :
-    ApplicationInfoGridItemRepository {
+internal class DefaultApplicationInfoGridItemRepository @Inject constructor(private val applicationInfoGridItemDao: ApplicationInfoGridItemDao) : ApplicationInfoGridItemRepository {
     override val gridItems =
+        applicationInfoGridItemDao.getApplicationInfoGridItemEntities().map { entities ->
+            entities.filter { entity ->
+                entity.folderId == null
+            }.map { entity ->
+                entity.asGridItem()
+            }
+        }
+
+    override val gridItemsWithFolderId =
         applicationInfoGridItemDao.getApplicationInfoGridItemEntities().map { entities ->
             entities.map { entity ->
                 entity.asGridItem()
@@ -70,16 +78,14 @@ internal class DefaultApplicationInfoGridItemRepository @Inject constructor(priv
         applicationInfoGridItemDao.deleteApplicationInfoGridItemEntity(entity = applicationInfoGridItem.asEntity())
     }
 
-    override suspend fun getApplicationInfoGridItems(
+    override suspend fun getApplicationInfoGridItemsByPackageName(
         serialNumber: Long,
         packageName: String,
-    ): List<ApplicationInfoGridItem> {
-        return applicationInfoGridItemDao.getApplicationInfoGridItemEntities(
-            serialNumber = serialNumber,
-            packageName = packageName,
-        ).map { entity ->
-            entity.asModel()
-        }
+    ): List<ApplicationInfoGridItem> = applicationInfoGridItemDao.getApplicationInfoGridItemEntitiesByPackageName(
+        serialNumber = serialNumber,
+        packageName = packageName,
+    ).map { entity ->
+        entity.asModel()
     }
 
     override suspend fun deleteApplicationInfoGridItem(
@@ -100,5 +106,9 @@ internal class DefaultApplicationInfoGridItemRepository @Inject constructor(priv
 
     override suspend fun insertApplicationInfoGridItem(applicationInfoGridItem: ApplicationInfoGridItem) {
         applicationInfoGridItemDao.insertApplicationInfoGridItemEntity(entity = applicationInfoGridItem.asEntity())
+    }
+
+    override suspend fun deleteApplicationInfoGridItemById(id: String) {
+        applicationInfoGridItemDao.deleteApplicationInfoGridItemEntityById(id = id)
     }
 }

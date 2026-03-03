@@ -17,35 +17,30 @@
  */
 package com.eblan.launcher.feature.home
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.content.pm.LauncherApps.PinItemRequest
 import android.os.Build
-import android.os.IBinder
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
-import com.eblan.launcher.domain.model.HomeData
-import com.eblan.launcher.domain.model.ManagedProfileResult
+import com.eblan.launcher.domain.framework.FileManager
 import com.eblan.launcher.domain.model.PinItemRequestType
-import com.eblan.launcher.framework.bytearray.AndroidByteArrayWrapper
+import com.eblan.launcher.feature.home.model.Klwp
+import com.eblan.launcher.feature.home.model.Screen
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_EXT_NAME
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_VAR_NAME
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_VAR_VALUE
+import com.eblan.launcher.framework.imageserializer.AndroidImageSerializer
 import com.eblan.launcher.framework.launcherapps.AndroidLauncherAppsWrapper
-import com.eblan.launcher.framework.launcherapps.PinItemRequestWrapper
 import com.eblan.launcher.framework.usermanager.AndroidUserManagerWrapper
-import com.eblan.launcher.framework.widgetmanager.AndroidAppWidgetHostWrapper
-import com.eblan.launcher.service.LauncherAppsService
-import com.eblan.launcher.service.SyncDataService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import java.io.File
 
 internal suspend fun handlePinItemRequest(
     pinItemRequest: PinItemRequest?,
     context: Context,
     launcherAppsWrapper: AndroidLauncherAppsWrapper,
-    byteArrayWrapper: AndroidByteArrayWrapper,
+    imageSerializer: AndroidImageSerializer,
     userManager: AndroidUserManagerWrapper,
+    fileManager: FileManager,
     onGetPinGridItem: (PinItemRequestType) -> Unit,
 ) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && pinItemRequest != null) {
@@ -55,15 +50,27 @@ internal suspend fun handlePinItemRequest(
                     pinItemRequest.getAppWidgetProviderInfo(context)
 
                 if (appWidgetProviderInfo != null) {
-                    val preview = appWidgetProviderInfo.loadPreviewImage(context, 0)?.let {
-                        byteArrayWrapper.createByteArray(drawable = it)
-                    }
+                    val componentName = appWidgetProviderInfo.provider.flattenToString()
+
+                    val preview =
+                        appWidgetProviderInfo.loadPreviewImage(context, 0)?.let { drawable ->
+                            val directory = fileManager.getFilesDirectory(FileManager.WIDGETS_DIR)
+
+                            val file = File(
+                                directory,
+                                fileManager.getHashedFileName(name = componentName),
+                            )
+
+                            imageSerializer.createDrawablePath(drawable = drawable, file = file)
+
+                            file.absolutePath
+                        }
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         onGetPinGridItem(
                             PinItemRequestType.Widget(
                                 appWidgetId = 0,
-                                componentName = appWidgetProviderInfo.provider.flattenToString(),
+                                componentName = componentName,
                                 packageName = appWidgetProviderInfo.provider.packageName,
                                 serialNumber = userManager.getSerialNumberForUser(userHandle = appWidgetProviderInfo.profile),
                                 configure = appWidgetProviderInfo.configure.flattenToString(),
@@ -107,6 +114,22 @@ internal suspend fun handlePinItemRequest(
                 val shortcutInfo = pinItemRequest.shortcutInfo
 
                 if (shortcutInfo != null) {
+                    val icon = launcherAppsWrapper.getShortcutIconDrawable(
+                        shortcutInfo = shortcutInfo,
+                        density = 0,
+                    )?.let { drawable ->
+                        val directory = fileManager.getFilesDirectory(FileManager.SHORTCUTS_DIR)
+
+                        val file = File(
+                            directory,
+                            fileManager.getHashedFileName(name = shortcutInfo.id),
+                        )
+
+                        imageSerializer.createDrawablePath(drawable = drawable, file = file)
+
+                        file.absolutePath
+                    }
+
                     onGetPinGridItem(
                         PinItemRequestType.ShortcutInfo(
                             serialNumber = userManager.getSerialNumberForUser(userHandle = shortcutInfo.userHandle),
@@ -116,12 +139,7 @@ internal suspend fun handlePinItemRequest(
                             longLabel = shortcutInfo.longLabel.toString(),
                             isEnabled = shortcutInfo.isEnabled,
                             disabledMessage = shortcutInfo.disabledMessage?.toString(),
-                            icon = launcherAppsWrapper.getShortcutIconDrawable(
-                                shortcutInfo = shortcutInfo,
-                                density = 0,
-                            )?.let {
-                                byteArrayWrapper.createByteArray(drawable = it)
-                            },
+                            icon = icon,
                         ),
                     )
                 }
@@ -130,81 +148,33 @@ internal suspend fun handlePinItemRequest(
     }
 }
 
-internal fun handleLifecycleEvent(
+internal fun handleKlwpBroadcasts(
+    klwpIntegration: Boolean,
+    screen: Screen,
     context: Context,
-    scope: CoroutineScope,
-    lifecycleOwner: LifecycleOwner,
-    event: Lifecycle.Event,
-    homeData: HomeData,
-    pinItemRequestWrapper: PinItemRequestWrapper,
-    appWidgetHost: AndroidAppWidgetHostWrapper,
-    onUpdateManagedProfileResult: (ManagedProfileResult?) -> Unit,
 ) {
-    val launcherAppsIntent = Intent(context, LauncherAppsService::class.java)
+    if (!klwpIntegration) return
 
-    val syncDataIntent = Intent(context, SyncDataService::class.java)
-
-    var isSyncDataServiceBound = false
-
-    val syncDataServiceConnection = object : ServiceConnection {
-        private var listener: SyncDataService? = null
-
-        override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            listener = (service as SyncDataService.LocalBinder).getService()
-
-            scope.launch {
-                lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    listener?.managedProfileResult?.collect {
-                        onUpdateManagedProfileResult(it)
-                    }
-                }
-            }
-
-            isSyncDataServiceBound = true
-        }
-
-        override fun onServiceDisconnected(name: ComponentName) {
-            listener = null
-
-            isSyncDataServiceBound = false
-        }
+    val intent = Intent(KUSTOM_ACTION).apply {
+        putExtra(KUSTOM_ACTION_EXT_NAME, "yagni-launcher")
+        putExtra(KUSTOM_ACTION_VAR_NAME, "screen")
     }
 
-    when (event) {
-        Lifecycle.Event.ON_START -> {
-            if (homeData.userData.experimentalSettings.syncData &&
-                pinItemRequestWrapper.getPinItemRequest() == null
-            ) {
-                context.startService(launcherAppsIntent)
-
-                context.startService(syncDataIntent)
-
-                context.bindService(
-                    syncDataIntent,
-                    syncDataServiceConnection,
-                    Context.BIND_AUTO_CREATE,
-                )
-            }
-
-            appWidgetHost.startListening()
+    when (screen) {
+        Screen.EditPage -> {
+            context.sendBroadcast(
+                intent.apply {
+                    putExtra(KUSTOM_ACTION_VAR_VALUE, Klwp.EditPage.ordinal)
+                },
+            )
         }
 
-        Lifecycle.Event.ON_STOP -> {
-            if (homeData.userData.experimentalSettings.syncData &&
-                pinItemRequestWrapper.getPinItemRequest() == null
-            ) {
-                if (isSyncDataServiceBound) {
-                    context.unbindService(syncDataServiceConnection)
-
-                    isSyncDataServiceBound = false
-                }
-
-                context.stopService(launcherAppsIntent)
-
-                context.stopService(syncDataIntent)
-            }
-
-            appWidgetHost.stopListening()
+        Screen.Pager -> {
+            context.sendBroadcast(
+                intent.apply {
+                    putExtra(KUSTOM_ACTION_VAR_VALUE, Klwp.Pager.ordinal)
+                },
+            )
         }
 
         else -> Unit

@@ -25,175 +25,154 @@ import com.eblan.launcher.domain.common.dispatcher.Dispatcher
 import com.eblan.launcher.domain.common.dispatcher.EblanDispatchers
 import com.eblan.launcher.domain.framework.IconPackManager
 import com.eblan.launcher.domain.model.IconPackInfoComponent
-import com.eblan.launcher.framework.bytearray.AndroidByteArrayWrapper
+import com.eblan.launcher.framework.imageserializer.AndroidImageSerializer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.File
 import java.io.InputStream
 import javax.inject.Inject
 
 @SuppressLint("DiscouragedApi")
 internal class DefaultIconPackManager @Inject constructor(
     @param:ApplicationContext private val context: Context,
+    private val imageSerializer: AndroidImageSerializer,
     @param:Dispatcher(EblanDispatchers.IO) private val ioDispatcher: CoroutineDispatcher,
-    private val androidByteArrayWrapper: AndroidByteArrayWrapper,
-) : IconPackManager, AndroidIconPackManager {
-    override suspend fun parseAppFilter(packageName: String): List<IconPackInfoComponent> {
-        return withContext(ioDispatcher) {
-            try {
-                val packageContext = context.createPackageContext(
-                    packageName,
-                    Context.CONTEXT_IGNORE_SECURITY,
-                )
-
-                val resources = packageContext.resources
-
-                val xmlId = resources.getIdentifier(
-                    "appfilter",
-                    "xml",
-                    packageName,
-                )
-
-                val rawId = resources.getIdentifier(
-                    "appfilter",
-                    "raw",
-                    packageName,
-                )
-
-                val autoCloseable = when {
-                    xmlId != 0 -> {
-                        resources.getXml(xmlId)
-                    }
-
-                    rawId != 0 -> {
-                        resources.openRawResource(rawId)
-                    }
-
-                    else -> {
-                        packageContext.assets.open("appfilter.xml")
-                    }
-                }
-
-                autoCloseable.use { autoCloseable ->
-                    when (autoCloseable) {
-                        is XmlResourceParser -> {
-                            parseXml(
-                                packageName = packageName,
-                                xmlPullParser = autoCloseable,
-                            )
-                        }
-
-                        is InputStream -> {
-                            val xmlPullParser = XmlPullParserFactory.newInstance().newPullParser()
-
-                            xmlPullParser.setInput(autoCloseable.reader())
-
-                            parseXml(
-                                packageName = packageName,
-                                xmlPullParser = xmlPullParser,
-                            )
-                        }
-
-                        else -> {
-                            emptyList()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-
-                emptyList()
-            }
-        }
-    }
-
-    override suspend fun loadByteArrayFromIconPack(
-        packageName: String,
-        drawableName: String,
-    ): ByteArray? {
-        return withContext(ioDispatcher) {
-            val packageContext =
-                context.createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY)
+) : IconPackManager,
+    AndroidIconPackManager {
+    override suspend fun getIconPackInfoComponents(packageName: String): List<IconPackInfoComponent> = withContext(ioDispatcher) {
+        try {
+            val packageContext = context.createPackageContext(
+                packageName,
+                Context.CONTEXT_IGNORE_SECURITY,
+            )
 
             val resources = packageContext.resources
 
-            val id = resources.getIdentifier(drawableName, "drawable", packageName)
+            val xmlId = resources.getIdentifier(
+                "appfilter",
+                "xml",
+                packageName,
+            )
 
-            if (id > 0) {
-                androidByteArrayWrapper.createByteArray(
-                    drawable = resources.getDrawable(
-                        id,
-                        packageContext.theme,
-                    ),
-                )
-            } else {
-                null
+            val rawId = resources.getIdentifier(
+                "appfilter",
+                "raw",
+                packageName,
+            )
+
+            val autoCloseable = when {
+                xmlId != 0 -> {
+                    resources.getXml(xmlId)
+                }
+
+                rawId != 0 -> {
+                    resources.openRawResource(rawId)
+                }
+
+                else -> {
+                    packageContext.assets.open("appfilter.xml")
+                }
             }
+
+            autoCloseable.use { autoCloseable ->
+                when (autoCloseable) {
+                    is XmlResourceParser -> {
+                        parseXml(xmlPullParser = autoCloseable)
+                    }
+
+                    is InputStream -> {
+                        val xmlPullParser = XmlPullParserFactory.newInstance().newPullParser()
+
+                        xmlPullParser.setInput(autoCloseable.reader())
+
+                        parseXml(xmlPullParser = xmlPullParser)
+                    }
+
+                    else -> {
+                        emptyList()
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    override suspend fun createIconPackInfoPath(
+        packageName: String,
+        drawableName: String,
+        file: File,
+    ): String? = withContext(ioDispatcher) {
+        val packageContext =
+            context.createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY)
+
+        val resources = packageContext.resources
+
+        val resId = resources.getIdentifier(drawableName, "drawable", packageName)
+
+        if (resId != 0) {
+            imageSerializer.createDrawablePath(
+                drawable = resources.getDrawable(
+                    resId,
+                    packageContext.theme,
+                ),
+                file = file,
+            )
+
+            file.absolutePath
+        } else {
+            null
         }
     }
 
     override suspend fun loadDrawableFromIconPack(
         packageName: String,
         drawableName: String,
-    ): Drawable? {
-        return withContext(ioDispatcher) {
-            val packageContext =
-                context.createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY)
-
-            val resources = packageContext.resources
-
-            val id = resources.getIdentifier(drawableName, "drawable", packageName)
-
-            if (id > 0) {
-                resources.getDrawable(
-                    id,
-                    packageContext.theme,
-                )
-            } else {
-                null
-            }
-        }
-    }
-
-    private suspend fun parseXml(
-        packageName: String,
-        xmlPullParser: XmlPullParser,
-    ): List<IconPackInfoComponent> {
+    ): Drawable? = withContext(ioDispatcher) {
         val packageContext =
             context.createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY)
 
         val resources = packageContext.resources
 
+        val resId = resources.getIdentifier(drawableName, "drawable", packageName)
+
+        if (resId != 0) {
+            resources.getDrawable(
+                resId,
+                packageContext.theme,
+            )
+        } else {
+            null
+        }
+    }
+
+    private suspend fun parseXml(xmlPullParser: XmlPullParser): List<IconPackInfoComponent> {
         val iconPackInfoComponents = mutableListOf<IconPackInfoComponent>()
 
         var eventType = xmlPullParser.eventType
 
-        withContext(ioDispatcher) {
-            while (isActive && eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG && xmlPullParser.name == "item") {
-                    val component = xmlPullParser.getAttributeValue(null, "component")
+        while (currentCoroutineContext().isActive && eventType != XmlPullParser.END_DOCUMENT) {
+            if (eventType == XmlPullParser.START_TAG && xmlPullParser.name == "item") {
+                val component = xmlPullParser.getAttributeValue(null, "component")
 
-                    val drawable = xmlPullParser.getAttributeValue(null, "drawable")
+                val drawable = xmlPullParser.getAttributeValue(null, "drawable")
 
-                    if (!component.isNullOrBlank() && !drawable.isNullOrBlank()) {
-                        val resId = resources.getIdentifier(drawable, "drawable", packageName)
-
-                        if (resId > 0) {
-                            iconPackInfoComponents.add(
-                                IconPackInfoComponent(
-                                    component = component,
-                                    drawable = drawable,
-                                ),
-                            )
-                        }
-                    }
+                if (!component.isNullOrBlank() && !drawable.isNullOrBlank()) {
+                    iconPackInfoComponents.add(
+                        IconPackInfoComponent(
+                            componentName = component,
+                            drawableName = drawable,
+                        ),
+                    )
                 }
-
-                eventType = xmlPullParser.next()
             }
+
+            eventType = xmlPullParser.next()
         }
 
         return iconPackInfoComponents

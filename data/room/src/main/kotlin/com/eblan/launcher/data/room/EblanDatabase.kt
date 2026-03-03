@@ -23,6 +23,8 @@ import androidx.room.RoomDatabase
 import com.eblan.launcher.data.room.dao.ApplicationInfoGridItemDao
 import com.eblan.launcher.data.room.dao.EblanAppWidgetProviderInfoDao
 import com.eblan.launcher.data.room.dao.EblanApplicationInfoDao
+import com.eblan.launcher.data.room.dao.EblanApplicationInfoTagCrossRefDao
+import com.eblan.launcher.data.room.dao.EblanApplicationInfoTagDao
 import com.eblan.launcher.data.room.dao.EblanIconPackInfoDao
 import com.eblan.launcher.data.room.dao.EblanShortcutConfigDao
 import com.eblan.launcher.data.room.dao.EblanShortcutInfoDao
@@ -33,6 +35,8 @@ import com.eblan.launcher.data.room.dao.WidgetGridItemDao
 import com.eblan.launcher.data.room.entity.ApplicationInfoGridItemEntity
 import com.eblan.launcher.data.room.entity.EblanAppWidgetProviderInfoEntity
 import com.eblan.launcher.data.room.entity.EblanApplicationInfoEntity
+import com.eblan.launcher.data.room.entity.EblanApplicationInfoTagCrossRefEntity
+import com.eblan.launcher.data.room.entity.EblanApplicationInfoTagEntity
 import com.eblan.launcher.data.room.entity.EblanIconPackInfoEntity
 import com.eblan.launcher.data.room.entity.EblanShortcutConfigEntity
 import com.eblan.launcher.data.room.entity.EblanShortcutInfoEntity
@@ -41,6 +45,8 @@ import com.eblan.launcher.data.room.entity.ShortcutConfigGridItemEntity
 import com.eblan.launcher.data.room.entity.ShortcutInfoGridItemEntity
 import com.eblan.launcher.data.room.entity.WidgetGridItemEntity
 import com.eblan.launcher.data.room.migration.AutoMigration5To6
+import com.eblan.launcher.data.room.migration.AutoMigration8To9
+import com.eblan.launcher.data.room.migration.AutoMigration9To10
 
 @Database(
     entities = [
@@ -54,14 +60,38 @@ import com.eblan.launcher.data.room.migration.AutoMigration5To6
         EblanIconPackInfoEntity::class,
         EblanShortcutConfigEntity::class,
         ShortcutConfigGridItemEntity::class,
+        EblanApplicationInfoTagCrossRefEntity::class,
+        EblanApplicationInfoTagEntity::class,
     ],
-    version = 6,
+    version = 12,
     exportSchema = true,
     autoMigrations = [
+        AutoMigration(
+            from = 4,
+            to = 5,
+        ),
         AutoMigration(
             from = 5,
             to = 6,
             spec = AutoMigration5To6::class,
+        ),
+        AutoMigration(
+            from = 6,
+            to = 7,
+        ),
+        AutoMigration(
+            from = 8,
+            to = 9,
+            spec = AutoMigration8To9::class,
+        ),
+        AutoMigration(
+            from = 9,
+            to = 10,
+            spec = AutoMigration9To10::class,
+        ),
+        AutoMigration(
+            from = 10,
+            to = 11,
         ),
     ],
 )
@@ -85,6 +115,10 @@ internal abstract class EblanDatabase : RoomDatabase() {
     abstract fun eblanShortcutConfigDao(): EblanShortcutConfigDao
 
     abstract fun shortcutConfigGridItemDao(): ShortcutConfigGridItemDao
+
+    abstract fun eblanApplicationInfoTagCrossRefDao(): EblanApplicationInfoTagCrossRefDao
+
+    abstract fun eblanApplicationInfoTagDao(): EblanApplicationInfoTagDao
 
     companion object {
         const val DATABASE_NAME = "Eblan.db"

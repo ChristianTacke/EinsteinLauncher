@@ -21,13 +21,13 @@ import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.eblan.launcher.domain.model.Associate
+import com.eblan.launcher.domain.model.EblanAction
 import com.eblan.launcher.domain.model.GridItemSettings
 
 @Entity
 data class ApplicationInfoGridItemEntity(
     @PrimaryKey
     val id: String,
-    val folderId: String?,
     val page: Int,
     val startColumn: Int,
     val startRow: Int,
@@ -43,4 +43,9 @@ data class ApplicationInfoGridItemEntity(
     val customIcon: String?,
     val customLabel: String?,
     @Embedded val gridItemSettings: GridItemSettings,
+    @Embedded(prefix = "doubleTap_") val doubleTap: EblanAction,
+    @Embedded(prefix = "swipeUp_") val swipeUp: EblanAction,
+    @Embedded(prefix = "swipeDown_") val swipeDown: EblanAction,
+    val index: Int,
+    val folderId: String?,
 )

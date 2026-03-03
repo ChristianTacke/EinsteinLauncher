@@ -19,7 +19,6 @@ package com.eblan.launcher.feature.home.screen.pager
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Rect
 import android.os.IBinder
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -29,112 +28,85 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.PagerState
 import com.eblan.launcher.domain.model.EblanAction
+import com.eblan.launcher.domain.model.EblanActionType
 import com.eblan.launcher.domain.model.EblanApplicationInfoGroup
 import com.eblan.launcher.domain.model.GestureSettings
-import com.eblan.launcher.domain.model.GlobalAction
+import com.eblan.launcher.feature.home.model.Klwp
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_EXT_NAME
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_VAR_NAME
+import com.eblan.launcher.feature.home.util.KUSTOM_ACTION_VAR_VALUE
 import com.eblan.launcher.feature.home.util.calculatePage
+import com.eblan.launcher.feature.home.util.handleEblanAction
 import com.eblan.launcher.framework.launcherapps.AndroidLauncherAppsWrapper
 import com.eblan.launcher.framework.wallpapermanager.AndroidWallpaperManagerWrapper
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
-internal fun doEblanActions(
+internal fun swipeEblanAction(
     gestureSettings: GestureSettings,
     swipeUpY: Float,
     swipeDownY: Float,
     screenHeight: Int,
-    onStartMainActivity: (String) -> Unit,
-    onPerformGlobalAction: (GlobalAction) -> Unit,
+    launcherApps: AndroidLauncherAppsWrapper,
+    context: Context,
 ) {
-    fun handleEblanAction(
-        eblanAction: EblanAction,
-        onStartMainActivity: (String) -> Unit,
-        onPerformGlobalAction: (GlobalAction) -> Unit,
-    ) {
-        when (eblanAction) {
-            is EblanAction.OpenApp -> {
-                onStartMainActivity(eblanAction.componentName)
-            }
-
-            EblanAction.OpenNotificationPanel -> {
-                onPerformGlobalAction(GlobalAction.Notifications)
-            }
-
-            EblanAction.LockScreen -> {
-                onPerformGlobalAction(GlobalAction.LockScreen)
-            }
-
-            EblanAction.OpenQuickSettings -> {
-                onPerformGlobalAction(GlobalAction.QuickSettings)
-            }
-
-            EblanAction.OpenRecents -> {
-                onPerformGlobalAction(GlobalAction.Recents)
-            }
-
-            EblanAction.OpenAppDrawer, EblanAction.None -> Unit
-        }
-    }
-
     val swipeThreshold = 100f
 
     if (swipeUpY < screenHeight - swipeThreshold) {
         handleEblanAction(
             eblanAction = gestureSettings.swipeUp,
-            onStartMainActivity = onStartMainActivity,
-            onPerformGlobalAction = onPerformGlobalAction,
+            launcherApps = launcherApps,
+            context = context,
+            onOpenAppDrawer = {},
         )
     }
 
     if (swipeDownY < screenHeight - swipeThreshold) {
         handleEblanAction(
             eblanAction = gestureSettings.swipeDown,
-            onStartMainActivity = onStartMainActivity,
-            onPerformGlobalAction = onPerformGlobalAction,
+            launcherApps = launcherApps,
+            context = context,
+            onOpenAppDrawer = {},
         )
     }
 }
 
-internal fun resetSwipeOffset(
-    scope: CoroutineScope,
+internal suspend fun resetSwipeOffset(
     gestureSettings: GestureSettings,
     swipeDownY: Animatable<Float, AnimationVector1D>,
     screenHeight: Int,
     swipeUpY: Animatable<Float, AnimationVector1D>,
 ) {
-    fun animateOffset(
+    suspend fun animateOffset(
         eblanAction: EblanAction,
         swipeY: Animatable<Float, AnimationVector1D>,
     ) {
-        scope.launch {
-            if (eblanAction is EblanAction.OpenAppDrawer) {
-                val targetValue = if (swipeY.value < screenHeight - 200f) {
-                    0f
-                } else {
-                    screenHeight.toFloat()
-                }
-
-                swipeY.animateTo(
-                    targetValue = targetValue,
-                    animationSpec = tween(
-                        easing = FastOutSlowInEasing,
-                    ),
-                )
+        if (eblanAction.eblanActionType == EblanActionType.OpenAppDrawer) {
+            val targetValue = if (swipeY.value < screenHeight - 200f) {
+                0f
             } else {
-                swipeY.snapTo(screenHeight.toFloat())
+                screenHeight.toFloat()
             }
+
+            swipeY.animateTo(
+                targetValue = targetValue,
+                animationSpec = tween(
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+        } else {
+            swipeY.snapTo(screenHeight.toFloat())
         }
     }
 
     animateOffset(
-        eblanAction = gestureSettings.swipeDown,
-        swipeY = swipeDownY,
+        eblanAction = gestureSettings.swipeUp,
+        swipeY = swipeUpY,
     )
 
     animateOffset(
-        eblanAction = gestureSettings.swipeUp,
-        swipeY = swipeUpY,
+        eblanAction = gestureSettings.swipeDown,
+        swipeY = swipeDownY,
     )
 }
 
@@ -198,43 +170,22 @@ internal suspend fun handleActionMainIntent(
 
 internal fun handleEblanActionIntent(
     intent: Intent,
-    onStartMainActivity: (String) -> Unit,
-    onPerformGlobalAction: (GlobalAction) -> Unit,
+    launcherApps: AndroidLauncherAppsWrapper,
+    context: Context,
     onOpenAppDrawer: () -> Unit,
 ) {
     if (intent.action != EblanAction.ACTION) return
 
     val eblanAction = intent.getStringExtra(EblanAction.NAME)?.let { eblanAction ->
         Json.decodeFromString<EblanAction>(eblanAction)
-    }
+    } ?: return
 
-    when (eblanAction) {
-        is EblanAction.OpenApp -> {
-            onStartMainActivity(eblanAction.componentName)
-        }
-
-        EblanAction.OpenNotificationPanel -> {
-            onPerformGlobalAction(GlobalAction.Notifications)
-        }
-
-        EblanAction.LockScreen -> {
-            onPerformGlobalAction(GlobalAction.LockScreen)
-        }
-
-        EblanAction.OpenQuickSettings -> {
-            onPerformGlobalAction(GlobalAction.QuickSettings)
-        }
-
-        EblanAction.OpenRecents -> {
-            onPerformGlobalAction(GlobalAction.Recents)
-        }
-
-        EblanAction.OpenAppDrawer -> {
-            onOpenAppDrawer()
-        }
-
-        EblanAction.None, null -> Unit
-    }
+    handleEblanAction(
+        eblanAction = eblanAction,
+        launcherApps = launcherApps,
+        context = context,
+        onOpenAppDrawer = onOpenAppDrawer,
+    )
 }
 
 internal suspend fun handleApplyFling(
@@ -279,58 +230,41 @@ internal fun handleHasDoubleTap(
     gestureSettings: GestureSettings,
     launcherApps: AndroidLauncherAppsWrapper,
     context: Context,
-    onShowAppDrawer: () -> Unit,
+    onOpenAppDrawer: () -> Unit,
 ) {
     if (!hasDoubleTap) return
 
-    when (val eblanAction = gestureSettings.doubleTap) {
-        EblanAction.None -> {}
+    handleEblanAction(
+        eblanAction = gestureSettings.doubleTap,
+        launcherApps = launcherApps,
+        context = context,
+        onOpenAppDrawer = onOpenAppDrawer,
+    )
+}
 
-        is EblanAction.OpenApp -> {
-            launcherApps.startMainActivity(
-                componentName = eblanAction.componentName,
-                sourceBounds = Rect(),
-            )
-        }
+internal fun handleKlwpBroadcasts(
+    klwpIntegration: Boolean,
+    isApplicationScreenVisible: Boolean,
+    context: Context,
+) {
+    if (!klwpIntegration) return
 
-        EblanAction.OpenAppDrawer -> {
-            onShowAppDrawer()
-        }
+    val intent = Intent(KUSTOM_ACTION).apply {
+        putExtra(KUSTOM_ACTION_EXT_NAME, "yagni-launcher")
+        putExtra(KUSTOM_ACTION_VAR_NAME, "screen")
+    }
 
-        EblanAction.OpenNotificationPanel -> {
-            val intent = Intent(GlobalAction.NAME).putExtra(
-                GlobalAction.GLOBAL_ACTION_TYPE,
-                GlobalAction.Notifications.name,
-            ).setPackage(context.packageName)
-
-            context.sendBroadcast(intent)
-        }
-
-        EblanAction.LockScreen -> {
-            val intent = Intent(GlobalAction.NAME).putExtra(
-                GlobalAction.GLOBAL_ACTION_TYPE,
-                GlobalAction.LockScreen.name,
-            ).setPackage(context.packageName)
-
-            context.sendBroadcast(intent)
-        }
-
-        EblanAction.OpenQuickSettings -> {
-            val intent = Intent(GlobalAction.NAME).putExtra(
-                GlobalAction.GLOBAL_ACTION_TYPE,
-                GlobalAction.QuickSettings.name,
-            ).setPackage(context.packageName)
-
-            context.sendBroadcast(intent)
-        }
-
-        EblanAction.OpenRecents -> {
-            val intent = Intent(GlobalAction.NAME).putExtra(
-                GlobalAction.GLOBAL_ACTION_TYPE,
-                GlobalAction.Recents.name,
-            ).setPackage(context.packageName)
-
-            context.sendBroadcast(intent)
-        }
+    if (isApplicationScreenVisible) {
+        context.sendBroadcast(
+            intent.apply {
+                putExtra(KUSTOM_ACTION_VAR_VALUE, Klwp.AppDrawer.ordinal)
+            },
+        )
+    } else {
+        context.sendBroadcast(
+            intent.apply {
+                putExtra(KUSTOM_ACTION_VAR_VALUE, Klwp.Pager.ordinal)
+            },
+        )
     }
 }

@@ -17,32 +17,50 @@
  */
 package com.eblan.launcher.domain.repository
 
+import com.eblan.launcher.domain.model.DeleteEblanApplicationInfo
 import com.eblan.launcher.domain.model.EblanApplicationInfo
+import com.eblan.launcher.domain.model.EblanApplicationInfoTag
 import com.eblan.launcher.domain.model.SyncEblanApplicationInfo
 import kotlinx.coroutines.flow.Flow
 
 interface EblanApplicationInfoRepository {
     val eblanApplicationInfos: Flow<List<EblanApplicationInfo>>
 
+    suspend fun getEblanApplicationInfos(): List<EblanApplicationInfo>
+
     suspend fun upsertEblanApplicationInfo(eblanApplicationInfo: EblanApplicationInfo)
 
-    suspend fun getEblanApplicationInfosByPackageName(packageName: String): List<EblanApplicationInfo>
+    suspend fun updateEblanApplicationInfos(eblanApplicationInfos: List<EblanApplicationInfo>)
 
-    suspend fun deleteEblanApplicationInfo(
+    suspend fun deleteEblanApplicationInfoByPackageName(
         serialNumber: Long,
         packageName: String,
     )
 
     suspend fun deleteEblanApplicationInfos(eblanApplicationInfos: List<EblanApplicationInfo>)
 
-    suspend fun getEblanApplicationInfo(
-        serialNumber: Long,
-        packageName: String,
-    ): EblanApplicationInfo?
-
     suspend fun upsertSyncEblanApplicationInfos(syncEblanApplicationInfos: List<SyncEblanApplicationInfo>)
 
-    suspend fun deleteSyncEblanApplicationInfos(syncEblanApplicationInfos: List<SyncEblanApplicationInfo>)
+    suspend fun deleteSyncEblanApplicationInfos(deleteEblanApplicationInfos: List<DeleteEblanApplicationInfo>)
 
     suspend fun updateEblanApplicationInfo(eblanApplicationInfo: EblanApplicationInfo)
+
+    suspend fun restoreEblanApplicationInfo(eblanApplicationInfo: EblanApplicationInfo)
+
+    suspend fun getEblanApplicationInfoByComponentName(
+        serialNumber: Long,
+        componentName: String,
+    ): EblanApplicationInfo?
+
+    suspend fun getEblanApplicationInfosByPackageName(
+        serialNumber: Long,
+        packageName: String,
+    ): List<EblanApplicationInfo>
+
+    fun getEblanApplicationInfosByTagId(tagIds: List<Long>): Flow<List<EblanApplicationInfo>>
+
+    fun getEblanApplicationInfoTags(
+        serialNumber: Long,
+        componentName: String,
+    ): Flow<List<EblanApplicationInfoTag>>
 }

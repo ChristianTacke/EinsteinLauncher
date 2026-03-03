@@ -64,7 +64,6 @@ internal fun SettingsRoute(
     onHome: () -> Unit,
     onAppDrawer: () -> Unit,
     onGestures: () -> Unit,
-    onFolder: () -> Unit,
     onExperimental: () -> Unit,
 ) {
     SettingsScreen(
@@ -74,7 +73,6 @@ internal fun SettingsRoute(
         onHome = onHome,
         onAppDrawer = onAppDrawer,
         onGestures = onGestures,
-        onFolder = onFolder,
         onExperimental = onExperimental,
     )
 }
@@ -88,7 +86,6 @@ internal fun SettingsScreen(
     onHome: () -> Unit,
     onAppDrawer: () -> Unit,
     onGestures: () -> Unit,
-    onFolder: () -> Unit,
     onExperimental: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -144,7 +141,7 @@ internal fun SettingsScreen(
                     SettingsRow(
                         imageVector = EblanLauncherIcons.Info,
                         title = "Default Launcher",
-                        subtitle = "Choose Einstein Launcher",
+                        subtitle = "Choose Yagni Launcher",
                         onClick = {
                             context.startActivity(Intent(ACTION_HOME_SETTINGS))
                         },
@@ -181,15 +178,6 @@ internal fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.fillMaxWidth())
 
                 SettingsRow(
-                    imageVector = EblanLauncherIcons.Folder,
-                    title = "Folder",
-                    subtitle = "Columns and rows count",
-                    onClick = onFolder,
-                )
-
-                HorizontalDivider(modifier = Modifier.fillMaxWidth())
-
-                SettingsRow(
                     imageVector = EblanLauncherIcons.Gesture,
                     title = "Gestures",
                     subtitle = "Swipe gesture actions",
@@ -211,12 +199,12 @@ internal fun SettingsScreen(
     if (showSupportDialog) {
         TextDialog(
             title = "Support Development",
-            text = "Thank you for using Einstein Launcher Alpha! I’ve been building this project since January 2025, releasing weekly updates. It’s my most complex project yet, and I pour my heart into it. If you enjoy it, you can support development with a donation or a star on GitHub.",
+            text = "Thank you for using Yagni Launcher Alpha! I’ve been building this project since January 2025, releasing weekly updates. It’s my most complex project yet, and I pour my heart into it. If you enjoy it, you can support development with a donation or a star on GitHub.",
             onClick = {
                 context.startActivity(
                     Intent(
                         Intent.ACTION_VIEW,
-                        "https://github.com/JackEblan/EinsteinLauncher".toUri(),
+                        "https://github.com/JackEblan/YagniLauncher".toUri(),
                     ),
                 )
 
