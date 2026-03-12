@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import java.text.Collator
 import javax.inject.Inject
 
 class GetEblanApplicationInfosByLabelUseCase @Inject constructor(
@@ -64,7 +65,7 @@ class GetEblanApplicationInfosByLabelUseCase @Inject constructor(
                         label,
                         ignoreCase = true,
                     )
-                }.sortedBy { it.label.lowercase() }.toMutableList()
+                }.sortedWith(compareBy(Collator.getInstance()) { it.label }).toMutableList()
 
             updateEblanApplicationInfoIndexes(
                 eblanApplicationInfoOrder = userData.appDrawerSettings.eblanApplicationInfoOrder,
